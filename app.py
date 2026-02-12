@@ -336,10 +336,35 @@ KNOWN_AUDIENCES = {'男性向', '女性向'}
 KNOWN_RATIOS = {'竖', '方', '横'}
 
 
+def _is_noise_word(word):
+    """判断一个词是否为干扰信息（日期/数字/哈希/已知代码等）"""
+    w = word.strip()
+    if not w:
+        return True
+    w_upper = w.upper()
+    # 纯数字（日期片段、编号等）
+    if re.match(r'^\d+$', w):
+        return True
+    # 版本后缀 1_2, 1_3 等
+    if re.match(r'^\d+_\d+$', w):
+        return True
+    # 十六进制哈希（≥8位连续 hex 字符）
+    if re.match(r'^[0-9a-fA-F]{8,}$', w):
+        return True
+    # 已知地区/平台/制作人代码
+    if w_upper in KNOWN_REGIONS or w_upper in KNOWN_PLATFORMS or w_upper in KNOWN_CREATORS:
+        return True
+    # 比例/属性/受众标记
+    if w in KNOWN_RATIOS or w in KNOWN_PROPERTIES or w in KNOWN_AUDIENCES:
+        return True
+    return False
+
+
 def parse_filename_local(filename):
     """
     本地规则解析器：从文件名中提取已知字段，剩余部分作为核心词。
     命名规范: {日期}-{地区}-{属性}-{受众}-{核心词}-{平台}-{制作人}-{比例}-{版本}
+    核心词限制: 最多 10 个字符
     """
     stem = Path(filename).stem
     parts = stem.split('-')
@@ -367,13 +392,13 @@ def parse_filename_local(filename):
         # 6位日期 (YYMMDD)
         if re.match(r'^\d{6}$', stripped) and not result['date']:
             result['date'] = stripped
-        # 地区代码
+        # 地区代码（整段精确匹配）
         elif upper in KNOWN_REGIONS and not result['region']:
             result['region'] = upper
-        # 平台代码
+        # 平台代码（整段精确匹配）
         elif upper in KNOWN_PLATFORMS and not result['platform']:
             result['platform'] = upper
-        # 制作人缩写
+        # 制作人缩写（整段精确匹配）
         elif upper in KNOWN_CREATORS and not result['creator']:
             result['creator'] = upper
         # 属性标记
@@ -385,7 +410,7 @@ def parse_filename_local(filename):
         # 比例标记
         elif stripped in KNOWN_RATIOS and not result['ratio']:
             result['ratio'] = stripped
-        # 纯数字 1-2 位，可能是版本号（先暂存，最后判断）
+        # 纯数字 1-2 位，暂存（最后判断是否为版本号）
         elif re.match(r'^\d{1,2}$', stripped):
             remaining.append(stripped)
         else:
@@ -395,7 +420,26 @@ def parse_filename_local(filename):
     if remaining and re.match(r'^\d{1,2}$', remaining[-1]):
         result['version'] = remaining.pop()
 
-    result['assetName'] = ' '.join(remaining).strip()
+    # ── 清洗核心词：对复合段落逐词过滤干扰信息 ──
+    cleaned_words = []
+    for part in remaining:
+        # 对含空格的复合段落，拆分后逐词检查
+        words = part.split()
+        for word in words:
+            if not _is_noise_word(word):
+                cleaned_words.append(word)
+
+    asset_name = ' '.join(cleaned_words).strip()
+
+    # 核心词上限 10 个字符，截断时不切断单词
+    if len(asset_name) > 10:
+        truncated = asset_name[:10]
+        # 如果截断点在单词中间，回退到上一个空格
+        if len(asset_name) > 10 and asset_name[10] != ' ' and ' ' in truncated:
+            truncated = truncated[:truncated.rfind(' ')]
+        asset_name = truncated.strip()
+
+    result['assetName'] = asset_name
     return result
 
 
