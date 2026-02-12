@@ -14,7 +14,7 @@ import imageio_ffmpeg
 
 # 可选依赖
 try:
-    import google.generativeai as genai
+    from google import genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
@@ -587,19 +587,21 @@ def analyze_filename_api():
 
     if not HAS_GENAI:
         return jsonify({
-            'error': '缺少 google-generativeai 库，请运行: pip install google-generativeai'
+            'error': '缺少 google-genai 库，请运行: pip install google-genai'
         }), 500
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        client = genai.Client(api_key=api_key)
 
         prompt = GEMINI_PROMPT.format(
             filename=filename,
             width=width,
             height=height
         )
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+        )
 
         # 解析 JSON 响应
         text = response.text.strip()
@@ -618,7 +620,7 @@ def analyze_filename_api():
         return jsonify(result)
 
     except json.JSONDecodeError:
-        resp_text = response.text[:300] if 'response' in dir() else '无响应'
+        resp_text = text[:300] if 'text' in dir() else '无响应'
         return jsonify({'error': f'AI 返回格式错误: {resp_text}'}), 500
     except Exception as e:
         return jsonify({'error': f'AI 分析失败: {str(e)}'}), 500
@@ -640,13 +642,12 @@ def batch_analyze_api():
 
     if not HAS_GENAI:
         return jsonify({
-            'error': '缺少 google-generativeai 库，请运行: pip install google-generativeai'
+            'error': '缺少 google-genai 库，请运行: pip install google-genai'
         }), 500
 
     results = []
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        client = genai.Client(api_key=api_key)
 
         for item in items:
             try:
@@ -655,7 +656,10 @@ def batch_analyze_api():
                     width=item.get('width', 0),
                     height=item.get('height', 0)
                 )
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=prompt
+                )
                 text = response.text.strip()
 
                 if '```' in text:
