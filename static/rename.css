@@ -87,33 +87,6 @@
 .config-hint.success { color: #6ee7b7; }
 .config-hint.error { color: #f87171; }
 
-.api-key-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-
-.api-key-row input {
-    flex: 1;
-}
-
-.btn-icon {
-    background: #1a2240;
-    border: 1px solid #2a2a4a;
-    border-radius: 6px;
-    padding: 8px;
-    cursor: pointer;
-    color: #888;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-icon:hover {
-    border-color: #4a9eff;
-    color: #4a9eff;
-}
 
 /* ── 主内容区 ── */
 .main-content {

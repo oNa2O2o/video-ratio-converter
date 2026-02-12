@@ -14,12 +14,6 @@ import imageio_ffmpeg
 
 # 可选依赖
 try:
-    from google import genai
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
-try:
     from PIL import Image as PILImage
     HAS_PIL = True
 except ImportError:
@@ -332,34 +326,77 @@ def classify_ratio_rename(w, h):
         return '横'
 
 
-# Gemini AI 分析 Prompt
-GEMINI_PROMPT = """你是一个广告素材文件名分析助手。请分析以下原始文件名，提取关键信息。
+# 重命名工具 - 本地文件名规则解析器
+# 已知的业务标签集合
+KNOWN_REGIONS = {'JP', 'TC', 'EN', 'TH', 'KR', 'VN', 'ID', 'ES'}
+KNOWN_PLATFORMS = {'FB', 'GG', 'TT'}
+KNOWN_CREATORS = {'ZHM', 'YY', 'ZSY', 'GJY', 'YHR', 'SY', 'DHY', 'CGY', 'QXY'}
+KNOWN_PROPERTIES = {'原创', '迭代', '竞品二创'}
+KNOWN_AUDIENCES = {'男性向', '女性向'}
+KNOWN_RATIOS = {'竖', '方', '横'}
 
-原始文件名: {filename}
-文件分辨率: {width}x{height}
 
-请执行以下操作：
-1. 清洗文件名：移除以下干扰信息：
-   - 日期（如 260129, 240522, 2024-05-22 等各种格式）
-   - 地区代码（JP/TC/EN/TH/KR/VN/ID/ES）
-   - 制作人缩写（ZHM/YY/ZSY/GJY/YHR/SY/DHY/CGY/QXY）
-   - 平台代码（FB/GG/TT）
-   - 比例标记（竖/方/横）
-   - 版本号（如 -1, -2, v1, v2）
-   - 属性标记（原创/迭代/竞品二创/原品/品牌/竞品）
-   - 受众标记（男性向/女性向/男/女）
-   - 无意义的分隔符和编号
+def parse_filename_local(filename):
+    """
+    本地规则解析器：从文件名中提取已知字段，剩余部分作为核心词。
+    命名规范: {日期}-{地区}-{属性}-{受众}-{核心词}-{平台}-{制作人}-{比例}-{版本}
+    """
+    stem = Path(filename).stem
+    parts = stem.split('-')
 
-2. 提取核心词(assetName)：保留核心业务描述，用简短的中文或英文表达。去掉多余空格，用空格分隔多个词。
+    result = {
+        'date': '',
+        'region': '',
+        'property': '',
+        'audience': '',
+        'assetName': '',
+        'platform': '',
+        'creator': '',
+        'ratio': '',
+        'version': '1',
+    }
 
-3. 判断受众(audience)：根据内容判断是 "男性向" 还是 "女性向"。如果无法判断，默认 "男性向"。
+    remaining = []
 
-4. 判断属性(property)：判断是 "原创"、"迭代" 还是 "竞品二创"。如果无法判断，默认 "原创"。
+    for part in parts:
+        stripped = part.strip()
+        if not stripped:
+            continue
+        upper = stripped.upper()
 
-5. 识别平台(platform)：从文件名中识别 FB、GG 或 TT。如果无法识别，返回空字符串。
+        # 6位日期 (YYMMDD)
+        if re.match(r'^\d{6}$', stripped) and not result['date']:
+            result['date'] = stripped
+        # 地区代码
+        elif upper in KNOWN_REGIONS and not result['region']:
+            result['region'] = upper
+        # 平台代码
+        elif upper in KNOWN_PLATFORMS and not result['platform']:
+            result['platform'] = upper
+        # 制作人缩写
+        elif upper in KNOWN_CREATORS and not result['creator']:
+            result['creator'] = upper
+        # 属性标记
+        elif stripped in KNOWN_PROPERTIES and not result['property']:
+            result['property'] = stripped
+        # 受众标记
+        elif stripped in KNOWN_AUDIENCES and not result['audience']:
+            result['audience'] = stripped
+        # 比例标记
+        elif stripped in KNOWN_RATIOS and not result['ratio']:
+            result['ratio'] = stripped
+        # 纯数字 1-2 位，可能是版本号（先暂存，最后判断）
+        elif re.match(r'^\d{1,2}$', stripped):
+            remaining.append(stripped)
+        else:
+            remaining.append(stripped)
 
-请严格以JSON格式返回，不要包含markdown代码块标记或任何其他内容：
-{{"assetName": "核心描述词", "audience": "男性向", "property": "原创", "platform": ""}}"""
+    # 最后一个纯数字片段当作版本号
+    if remaining and re.match(r'^\d{1,2}$', remaining[-1]):
+        result['version'] = remaining.pop()
+
+    result['assetName'] = ' '.join(remaining).strip()
+    return result
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -525,7 +562,7 @@ def rename_page():
 
 @app.route('/api/upload-for-rename', methods=['POST'])
 def upload_for_rename():
-    """上传素材文件并获取元数据（分辨率、比例）"""
+    """上传素材文件，获取元数据（分辨率、比例）并用本地规则解析文件名"""
     if 'files' not in request.files:
         return jsonify({'error': '没有选择文件'}), 400
 
@@ -556,136 +593,20 @@ def upload_for_rename():
 
         ratio_label = classify_ratio_rename(info['width'], info['height'])
 
+        # 本地规则解析文件名
+        parsed = parse_filename_local(f.filename)
+
         uploaded.append({
             'file_id': file_id,
             'original_name': f.filename,
             'path': str(save_path),
             'width': info.get('width', 0),
             'height': info.get('height', 0),
-            'ratio_label': ratio_label
+            'ratio_label': ratio_label,
+            'parsed': parsed,
         })
 
     return jsonify({'files': uploaded})
-
-
-@app.route('/api/analyze-filename', methods=['POST'])
-def analyze_filename_api():
-    """调用 Gemini AI 分析文件名，提取核心信息"""
-    data = request.get_json()
-    filename = data.get('filename', '')
-    width = data.get('width', 0)
-    height = data.get('height', 0)
-    api_key = data.get('api_key', '')
-
-    # 尝试从配置文件获取 API Key
-    if not api_key:
-        config = load_config()
-        api_key = config.get('gemini_api_key', '')
-
-    if not api_key:
-        return jsonify({'error': '请先设置 Gemini API Key'}), 400
-
-    if not HAS_GENAI:
-        return jsonify({
-            'error': '缺少 google-genai 库，请运行: pip install google-genai'
-        }), 500
-
-    try:
-        client = genai.Client(api_key=api_key)
-
-        prompt = GEMINI_PROMPT.format(
-            filename=filename,
-            width=width,
-            height=height
-        )
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt
-        )
-
-        # 解析 JSON 响应
-        text = response.text.strip()
-        # 尝试提取 JSON（可能被 markdown 代码块包裹）
-        if '```' in text:
-            parts = text.split('```')
-            for part in parts:
-                cleaned = part.strip()
-                if cleaned.startswith('json'):
-                    cleaned = cleaned[4:].strip()
-                if cleaned.startswith('{'):
-                    text = cleaned
-                    break
-
-        result = json.loads(text)
-        return jsonify(result)
-
-    except json.JSONDecodeError:
-        resp_text = text[:300] if 'text' in dir() else '无响应'
-        return jsonify({'error': f'AI 返回格式错误: {resp_text}'}), 500
-    except Exception as e:
-        return jsonify({'error': f'AI 分析失败: {str(e)}'}), 500
-
-
-@app.route('/api/batch-analyze', methods=['POST'])
-def batch_analyze_api():
-    """批量分析多个文件名（串行调用 Gemini）"""
-    data = request.get_json()
-    items = data.get('items', [])
-    api_key = data.get('api_key', '')
-
-    if not api_key:
-        config = load_config()
-        api_key = config.get('gemini_api_key', '')
-
-    if not api_key:
-        return jsonify({'error': '请先设置 Gemini API Key'}), 400
-
-    if not HAS_GENAI:
-        return jsonify({
-            'error': '缺少 google-genai 库，请运行: pip install google-genai'
-        }), 500
-
-    results = []
-    try:
-        client = genai.Client(api_key=api_key)
-
-        for item in items:
-            try:
-                prompt = GEMINI_PROMPT.format(
-                    filename=item.get('filename', ''),
-                    width=item.get('width', 0),
-                    height=item.get('height', 0)
-                )
-                response = client.models.generate_content(
-                    model='gemini-2.0-flash',
-                    contents=prompt
-                )
-                text = response.text.strip()
-
-                if '```' in text:
-                    parts = text.split('```')
-                    for part in parts:
-                        cleaned = part.strip()
-                        if cleaned.startswith('json'):
-                            cleaned = cleaned[4:].strip()
-                        if cleaned.startswith('{'):
-                            text = cleaned
-                            break
-
-                result = json.loads(text)
-                result['file_id'] = item.get('file_id', '')
-                result['success'] = True
-                results.append(result)
-            except Exception as e:
-                results.append({
-                    'file_id': item.get('file_id', ''),
-                    'success': False,
-                    'error': str(e)
-                })
-    except Exception as e:
-        return jsonify({'error': f'AI 服务初始化失败: {str(e)}'}), 500
-
-    return jsonify({'results': results})
 
 
 @app.route('/api/export-renamed', methods=['POST'])
@@ -743,27 +664,6 @@ def export_renamed():
     })
 
 
-@app.route('/api/save-api-key', methods=['POST'])
-def save_api_key():
-    """保存 Gemini API Key 到配置文件"""
-    data = request.get_json()
-    key = data.get('key', '').strip()
-    config = load_config()
-    config['gemini_api_key'] = key
-    save_config_file(config)
-    return jsonify({'ok': True})
-
-
-@app.route('/api/load-api-key', methods=['GET'])
-def load_api_key():
-    """加载已保存的 API Key（脱敏返回）"""
-    config = load_config()
-    key = config.get('gemini_api_key', '')
-    if key:
-        # 脱敏：只返回前4位和后4位
-        masked = key[:4] + '*' * max(0, len(key) - 8) + key[-4:] if len(key) > 8 else '****'
-        return jsonify({'has_key': True, 'masked_key': masked, 'key': key})
-    return jsonify({'has_key': False})
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,6 +1,6 @@
 /**
- * 素材重命名工具 - 前端逻辑
- * 功能：拖拽上传 → AI 智能分析 → 字段编辑 → 标准化命名 → 导出
+ * 素材重命名工具 - 前端逻辑（纯本地版，无 AI 依赖）
+ * 流程：拖拽上传 → 服务端检测分辨率+本地解析文件名 → 手动校对 → 导出
  */
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // DOM 元素引用
+    // DOM 元素
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const dropZone = document.getElementById('rename-drop-zone');
     const fileInput = document.getElementById('rename-file-input');
@@ -56,10 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const cfgRegion = document.getElementById('cfg-region');
     const cfgPlatform = document.getElementById('cfg-platform');
     const cfgCreator = document.getElementById('cfg-creator');
-    const cfgApiKey = document.getElementById('cfg-api-key');
-    const saveApiKeyBtn = document.getElementById('save-api-key');
-    const toggleKeyVisBtn = document.getElementById('toggle-key-vis');
-    const apiKeyStatus = document.getElementById('api-key-status');
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 应用状态
@@ -71,14 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // 初始化
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     function init() {
-        // 设置日期为今天 YYMMDD
         const now = new Date();
         const yy = String(now.getFullYear()).slice(2);
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         const dd = String(now.getDate()).padStart(2, '0');
         cfgDate.value = `${yy}${mm}${dd}`;
 
-        // 填充下拉选项
         populateSelect(cfgRegion, REGIONS.map(r => ({
             value: r.value, label: `${r.label} (${r.value})`
         })), 'JP');
@@ -90,9 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
         populateSelect(cfgCreator, CREATORS.map(c => ({
             value: c.value, label: `${c.label} (${c.value})`
         })), 'ZHM');
-
-        // 加载已保存的 API Key
-        loadSavedApiKey();
     }
 
     function populateSelect(select, options, defaultValue) {
@@ -100,49 +91,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `<option value="${o.value}" ${o.value === defaultValue ? 'selected' : ''}>${o.label}</option>`
         ).join('');
     }
-
-    async function loadSavedApiKey() {
-        try {
-            const resp = await fetch('/api/load-api-key');
-            const data = await resp.json();
-            if (data.has_key) {
-                cfgApiKey.value = data.key;
-                apiKeyStatus.textContent = '已保存';
-                apiKeyStatus.className = 'config-hint success';
-            }
-        } catch (_) {
-            // 忽略
-        }
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // API Key 管理
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    saveApiKeyBtn.addEventListener('click', async () => {
-        const key = cfgApiKey.value.trim();
-        if (!key) {
-            apiKeyStatus.textContent = '请输入 API Key';
-            apiKeyStatus.className = 'config-hint error';
-            return;
-        }
-        try {
-            await fetch('/api/save-api-key', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key })
-            });
-            apiKeyStatus.textContent = '已保存';
-            apiKeyStatus.className = 'config-hint success';
-        } catch (err) {
-            apiKeyStatus.textContent = '保存失败';
-            apiKeyStatus.className = 'config-hint error';
-        }
-    });
-
-    toggleKeyVisBtn.addEventListener('click', () => {
-        const isPassword = cfgApiKey.type === 'password';
-        cfgApiKey.type = isPassword ? 'text' : 'password';
-    });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 全局配置变更 → 同步更新所有素材
@@ -152,10 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             files.forEach(f => {
                 f.date = cfgDate.value;
                 f.region = cfgRegion.value;
-                // 仅当没有从 AI 检测到平台时才同步
-                if (!f.detectedPlatform) {
-                    f.platform = cfgPlatform.value;
-                }
+                if (!f.detectedPlatform) f.platform = cfgPlatform.value;
                 f.creator = cfgCreator.value;
             });
             renderFiles();
@@ -166,30 +111,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // 拖拽上传
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     dropZone.addEventListener('click', () => fileInput.click());
-
-    dropZone.addEventListener('dragover', e => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-    });
-
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
-    });
-
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
     dropZone.addEventListener('drop', e => {
         e.preventDefault();
         dropZone.classList.remove('drag-over');
         if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
     });
-
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length) handleFiles(fileInput.files);
         fileInput.value = '';
     });
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 清空列表
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     clearBtn.addEventListener('click', () => {
         files = [];
         fileItems.innerHTML = '';
@@ -197,161 +130,67 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsSection.style.display = 'none';
     });
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 浏览输出目录
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     browseOutputBtn.addEventListener('click', async () => {
         try {
             const resp = await fetch('/browse-folder', { method: 'POST' });
             const data = await resp.json();
             if (data.path) outputPathInput.value = data.path;
-        } catch (err) {
-            alert('浏览失败: ' + err.message);
-        }
+        } catch (err) { alert('浏览失败: ' + err.message); }
     });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 文件上传与分析
+    // 文件上传 → 服务端返回分辨率 + 本地解析结果
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     async function handleFiles(fileObjs) {
         fileListSection.style.display = 'block';
         resultsSection.style.display = 'none';
 
         const formData = new FormData();
-        const newFileEntries = [];
-
-        for (const f of fileObjs) {
-            formData.append('files', f);
-            newFileEntries.push(f.name);
-        }
-
-        // 先添加占位卡片（状态：分析中）
-        const tempIds = [];
-        for (const name of newFileEntries) {
-            const ext = name.split('.').pop().toLowerCase();
-            const tempFile = {
-                id: 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2),
-                originalName: name,
-                status: 'analyzing',
-                date: cfgDate.value,
-                region: cfgRegion.value,
-                platform: cfgPlatform.value,
-                creator: cfgCreator.value,
-                assetName: '',
-                audience: '男性向',
-                property: '原创',
-                ratio: '横',
-                version: '1',
-                ext: ext,
-                detectedPlatform: '',
-                serverPath: '',
-                width: 0,
-                height: 0
-            };
-            files.push(tempFile);
-            tempIds.push(tempFile.id);
-        }
-        renderFiles();
-
-        // 1. 上传文件到服务器
-        let serverFiles;
-        try {
-            const resp = await fetch('/api/upload-for-rename', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await resp.json();
-
-            if (data.error) {
-                markTempFilesError(tempIds, data.error);
-                return;
-            }
-            serverFiles = data.files;
-        } catch (err) {
-            markTempFilesError(tempIds, '上传失败: ' + err.message);
-            return;
-        }
-
-        // 2. 更新服务器返回的元数据
-        for (let i = 0; i < serverFiles.length; i++) {
-            const sf = serverFiles[i];
-            const tempId = tempIds[i];
-            const fileObj = files.find(f => f.id === tempId);
-            if (!fileObj) continue;
-
-            fileObj.serverId = sf.file_id;
-            fileObj.serverPath = sf.path;
-            fileObj.width = sf.width;
-            fileObj.height = sf.height;
-            fileObj.ratio = sf.ratio_label;
-        }
-        renderFiles();
-
-        // 3. 批量调用 AI 分析
-        const apiKey = cfgApiKey.value.trim();
-        const batchItems = serverFiles.map((sf, i) => ({
-            file_id: tempIds[i],
-            filename: newFileEntries[i],
-            width: sf.width,
-            height: sf.height
-        }));
+        for (const f of fileObjs) formData.append('files', f);
 
         try {
-            const resp = await fetch('/api/batch-analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items: batchItems, api_key: apiKey })
-            });
+            const resp = await fetch('/api/upload-for-rename', { method: 'POST', body: formData });
             const data = await resp.json();
+            if (data.error) { alert(data.error); return; }
 
-            if (data.error) {
-                markTempFilesError(tempIds, data.error);
-                return;
+            for (const sf of data.files) {
+                const ext = sf.original_name.split('.').pop().toLowerCase();
+                const p = sf.parsed || {};
+
+                // 从解析结果和全局配置合并
+                const fileObj = {
+                    id: sf.file_id,
+                    originalName: sf.original_name,
+                    serverPath: sf.path,
+                    width: sf.width,
+                    height: sf.height,
+                    ext: ext,
+                    // 优先用解析到的值，否则用全局配置
+                    date: p.date || cfgDate.value,
+                    region: p.region || cfgRegion.value,
+                    property: p.property || '原创',
+                    audience: p.audience || '男性向',
+                    assetName: p.assetName || '',
+                    platform: p.platform || cfgPlatform.value,
+                    creator: p.creator || cfgCreator.value,
+                    ratio: sf.ratio_label || p.ratio || '横',
+                    version: p.version || '1',
+                    detectedPlatform: p.platform || '',
+                    status: 'done'
+                };
+                files.push(fileObj);
             }
-
-            // 更新每个文件的分析结果
-            for (const result of data.results) {
-                const fileObj = files.find(f => f.id === result.file_id);
-                if (!fileObj) continue;
-
-                if (result.success) {
-                    fileObj.assetName = result.assetName || '';
-                    fileObj.audience = result.audience || '男性向';
-                    fileObj.property = result.property || '原创';
-                    if (result.platform) {
-                        fileObj.platform = result.platform;
-                        fileObj.detectedPlatform = result.platform;
-                    }
-                    fileObj.status = 'done';
-                } else {
-                    fileObj.status = 'error';
-                    fileObj.errorMsg = result.error || '分析失败';
-                }
-            }
+            renderFiles();
         } catch (err) {
-            markTempFilesError(tempIds, 'AI 分析失败: ' + err.message);
-            return;
+            alert('上传失败: ' + err.message);
         }
-
-        renderFiles();
-    }
-
-    function markTempFilesError(tempIds, errorMsg) {
-        tempIds.forEach(id => {
-            const f = files.find(f => f.id === id);
-            if (f) {
-                f.status = 'error';
-                f.errorMsg = errorMsg;
-            }
-        });
-        renderFiles();
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 文件名生成
+    // {日期}-{地区}-{属性}-{受众}-{核心词}-{平台}-{制作人}-{比例}-{版本}.{后缀}
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     function generateFilename(f) {
-        // {日期}-{地区}-{属性}-{受众}-{核心词}-{平台}-{制作人}-{比例}-{迭代版本}.{后缀}
         const parts = [
             f.date || '000000',
             f.region || 'JP',
@@ -378,10 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
             card.className = 'rename-card';
             card.dataset.idx = idx;
 
-            const statusClass = f.status === 'analyzing' ? 'status-analyzing' :
-                                f.status === 'done' ? 'status-done' : 'status-error';
-            const statusText = f.status === 'analyzing' ? '分析中...' :
-                              f.status === 'done' ? '就绪' : '错误';
             const resText = f.width > 0 ? `${f.width}×${f.height}` : '';
 
             card.innerHTML = `
@@ -391,15 +226,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="rename-card-original">${escapeHtml(f.originalName)}</span>
                         <span class="rename-card-resolution">${resText}</span>
                     </span>
-                    <span class="rename-card-status ${statusClass}">${statusText}</span>
+                    <span class="rename-card-status status-done">就绪</span>
                 </div>
-                ${f.status === 'error' ? `<div class="error-item" style="margin-bottom:12px">${escapeHtml(f.errorMsg || '分析失败')}</div>` : ''}
                 <div class="rename-card-fields">
                     <div class="rename-field rename-field-asset-name">
                         <label>核心词</label>
-                        <input type="text" value="${escapeHtml(f.assetName)}"
+                        <input type="text" value="${escapeAttr(f.assetName)}"
                                data-idx="${idx}" data-field="assetName"
-                               placeholder="AI 提取的核心描述">
+                               placeholder="输入素材核心描述">
                     </div>
                     <div class="rename-field">
                         <label>受众</label>
@@ -434,57 +268,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="rename-card-preview" data-idx="${idx}">${escapeHtml(generateFilename(f))}</div>
             `;
-
             fileItems.appendChild(card);
         });
 
-        // 绑定编辑事件（使用事件委托）
         bindCardEvents();
     }
 
     function bindCardEvents() {
-        // 使用事件委托：所有 input/select 变更
-        fileItems.onchange = (e) => {
-            const target = e.target;
-            const idx = parseInt(target.dataset.idx);
-            const field = target.dataset.field;
+        // 事件委托
+        fileItems.onchange = fileItems.oninput = (e) => {
+            const t = e.target;
+            const idx = parseInt(t.dataset.idx);
+            const field = t.dataset.field;
             if (field !== undefined && files[idx]) {
-                files[idx][field] = target.value;
+                files[idx][field] = t.value;
                 updatePreview(idx);
             }
         };
 
-        fileItems.oninput = (e) => {
-            const target = e.target;
-            if (target.tagName === 'INPUT') {
-                const idx = parseInt(target.dataset.idx);
-                const field = target.dataset.field;
-                if (field !== undefined && files[idx]) {
-                    files[idx][field] = target.value;
-                    updatePreview(idx);
-                }
-            }
-        };
-
-        // 删除按钮
         fileItems.querySelectorAll('.rename-card-delete').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
-                const idx = parseInt(btn.dataset.idx);
-                files.splice(idx, 1);
+                files.splice(parseInt(btn.dataset.idx), 1);
                 renderFiles();
-                if (files.length === 0) {
-                    fileListSection.style.display = 'none';
-                }
+                if (!files.length) fileListSection.style.display = 'none';
             };
         });
     }
 
     function updatePreview(idx) {
         const preview = fileItems.querySelector(`.rename-card-preview[data-idx="${idx}"]`);
-        if (preview && files[idx]) {
-            preview.textContent = generateFilename(files[idx]);
-        }
+        if (preview && files[idx]) preview.textContent = generateFilename(files[idx]);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -492,10 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     exportBtn.addEventListener('click', async () => {
         const validFiles = files.filter(f => f.serverPath);
-        if (!validFiles.length) {
-            alert('没有可导出的文件（请确保文件已上传成功）');
-            return;
-        }
+        if (!validFiles.length) { alert('没有可导出的文件'); return; }
 
         exportBtn.disabled = true;
         exportBtn.textContent = '导出中...';
@@ -515,42 +326,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
             const data = await resp.json();
-
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
+            if (data.error) { alert(data.error); return; }
 
             lastOutputDir = data.output_dir || '';
-
-            // 显示结果
             resultsSection.style.display = 'block';
             resultItems.innerHTML = '';
             errorItems.innerHTML = '';
 
-            if (data.results) {
-                data.results.forEach(r => {
-                    const div = document.createElement('div');
-                    div.className = 'result-item';
-                    div.innerHTML = `<span class="file-name">${escapeHtml(r.filename)}</span>`;
-                    resultItems.appendChild(div);
-                });
-            }
+            (data.results || []).forEach(r => {
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.innerHTML = `<span class="file-name">${escapeHtml(r.filename)}</span>`;
+                resultItems.appendChild(div);
+            });
 
-            if (data.errors && data.errors.length > 0) {
-                data.errors.forEach(e => {
-                    const div = document.createElement('div');
-                    div.className = 'error-item';
-                    div.textContent = `${e.filename}: ${e.error}`;
-                    errorItems.appendChild(div);
-                });
-            }
+            (data.errors || []).forEach(e => {
+                const div = document.createElement('div');
+                div.className = 'error-item';
+                div.textContent = `${e.filename}: ${e.error}`;
+                errorItems.appendChild(div);
+            });
 
-            // 清空文件列表
             files = [];
             fileItems.innerHTML = '';
             fileListSection.style.display = 'none';
-
         } catch (err) {
             alert('导出失败: ' + err.message);
         } finally {
@@ -559,9 +358,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 打开输出文件夹
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     openFolderBtn.addEventListener('click', async () => {
         try {
             await fetch('/open-folder', {
@@ -569,9 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: lastOutputDir })
             });
-        } catch (err) {
-            alert('无法打开文件夹: ' + err.message);
-        }
+        } catch (err) { alert('无法打开文件夹: ' + err.message); }
     });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -579,11 +373,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     function escapeHtml(str) {
         if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
     }
 
-    // 启动
+    function escapeAttr(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     init();
 });
