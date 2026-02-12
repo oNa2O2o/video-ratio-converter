@@ -7,20 +7,54 @@ import subprocess
 import threading
 import webbrowser
 import shutil
+import traceback
 from pathlib import Path
 
-# ━━━ Windows 终端中文编码修复 ━━━
+# ━━━ Windows 控制台编码修复 ━━━
 if sys.platform == 'win32':
-    os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+    # 设置控制台代码页为 UTF-8
     try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        os.system('chcp 65001 >nul 2>&1')
     except Exception:
         pass
+    # 强制 Python I/O 使用 UTF-8
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+    if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+        try:
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
 
-from flask import Flask, request, jsonify, render_template, send_from_directory, Response
 
-import imageio_ffmpeg
+def _fatal_error(msg):
+    """致命错误：写入日志文件并暂停，防止窗口闪退"""
+    err_file = Path(sys.executable).parent / 'error.log' if getattr(sys, 'frozen', False) \
+        else Path(__file__).parent / 'error.log'
+    try:
+        err_file.write_text(msg, encoding='utf-8')
+    except Exception:
+        pass
+    print(f"\n[ERROR] {msg}\n")
+    if getattr(sys, 'frozen', False):
+        input("按回车键退出...")
+    sys.exit(1)
+
+
+# ━━━ 安全导入依赖 ━━━
+try:
+    from flask import Flask, request, jsonify, render_template, send_from_directory, Response
+except ImportError:
+    _fatal_error("缺少 Flask 库。请检查打包是否完整。")
+
+try:
+    import imageio_ffmpeg
+except ImportError:
+    _fatal_error("缺少 imageio_ffmpeg 库。请检查打包是否完整。")
 
 # 可选依赖
 try:
@@ -32,15 +66,18 @@ except ImportError:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PyInstaller 兼容支持：区分执行模式和开发模式
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-if getattr(sys, 'frozen', False):
-    _BUNDLE_DIR = Path(sys._MEIPASS)
-    BASE_DIR = Path(sys.executable).parent
-    app = Flask(__name__,
-                template_folder=str(_BUNDLE_DIR / 'templates'),
-                static_folder=str(_BUNDLE_DIR / 'static'))
-else:
-    BASE_DIR = Path(__file__).parent.resolve()
-    app = Flask(__name__)
+try:
+    if getattr(sys, 'frozen', False):
+        _BUNDLE_DIR = Path(sys._MEIPASS)
+        BASE_DIR = Path(sys.executable).parent
+        app = Flask(__name__,
+                    template_folder=str(_BUNDLE_DIR / 'templates'),
+                    static_folder=str(_BUNDLE_DIR / 'static'))
+    else:
+        BASE_DIR = Path(__file__).parent.resolve()
+        app = Flask(__name__)
+except Exception as e:
+    _fatal_error(f"Flask 初始化失败:\n{traceback.format_exc()}")
 
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "output"
@@ -724,13 +761,28 @@ def export_renamed():
 # 启动入口
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == '__main__':
-    print(f"\n  视频比例转换 & 素材重命名工具已启动！")
-    print(f"  浏览器中打开: http://localhost:5000")
-    print(f"  素材重命名:   http://localhost:5000/rename")
-    print(f"  输出目录: {OUTPUT_DIR}")
-    print(f"  FFmpeg: {FFMPEG_PATH}")
-    print(f"  关闭此窗口即可退出程序\n")
+    try:
+        print("\n  ========================================")
+        print("  Video Ratio Converter & Rename Tool")
+        print("  ========================================")
+        print(f"  Web UI:  http://localhost:5000")
+        print(f"  Rename:  http://localhost:5000/rename")
+        print(f"  Output:  {OUTPUT_DIR}")
+        print(f"  FFmpeg:  {FFMPEG_PATH}")
+        print("  Close this window to exit.\n")
 
-    threading.Timer(1.5, lambda: webbrowser.open('http://localhost:5000')).start()
+        threading.Timer(1.5, lambda: webbrowser.open('http://localhost:5000')).start()
 
-    app.run(host='0.0.0.0', port=5000, debug=False)
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    except Exception as e:
+        err_msg = f"Application crashed:\n{traceback.format_exc()}"
+        try:
+            log_path = BASE_DIR / 'error.log'
+            log_path.write_text(err_msg, encoding='utf-8')
+            print(f"\n[ERROR] {err_msg}")
+            print(f"Error log saved: {log_path}")
+        except Exception:
+            print(f"\n[ERROR] {err_msg}")
+        if getattr(sys, 'frozen', False):
+            input("\nPress Enter to exit...")
+        sys.exit(1)
