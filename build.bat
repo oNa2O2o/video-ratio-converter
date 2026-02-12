@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul 2>&1
-title 构建视频比例转换工具
+title 构建素材工具箱
 
 echo.
 echo  ========================================
-echo    构建视频比例转换工具 - 打包为 EXE
+echo    构建素材工具箱 - 打包为 EXE
 echo  ========================================
 echo.
 
@@ -39,7 +39,7 @@ echo  [3/3] 打包中（请耐心等待）...
 %PYTHON% -m PyInstaller ^
     --noconfirm ^
     --clean ^
-    --name "视频比例转换工具" ^
+    --name "素材工具箱" ^
     --add-data "templates;templates" ^
     --add-data "static;static" ^
     --collect-all imageio_ffmpeg ^
@@ -58,12 +58,12 @@ if %errorlevel% neq 0 (
 echo.
 echo  ========================================
 echo    打包完成！
-echo    输出目录: %~dp0dist\视频比例转换工具\
-echo    双击 视频比例转换工具.exe 即可运行
+echo    输出目录: %~dp0dist\素材工具箱\
+echo    双击 素材工具箱.exe 即可运行
 echo  ========================================
 echo.
 
 :: 打开输出目录
-start "" "%~dp0dist\视频比例转换工具"
+start "" "%~dp0dist\素材工具箱"
 
 pause

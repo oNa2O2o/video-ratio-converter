@@ -89,7 +89,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.1.0'
+APP_VERSION = '2.2.0'
 
 
 @app.after_request
@@ -827,7 +827,7 @@ if __name__ == '__main__':
         _kill_port(PORT)
 
         print("\n  ========================================")
-        print(f"  Video Ratio Converter & Rename Tool v{APP_VERSION}")
+        print(f"  Asset Toolbox v{APP_VERSION}")
         print("  ========================================")
         print(f"  Web UI:  http://localhost:{PORT}")
         print(f"  Rename:  http://localhost:{PORT}/rename")
