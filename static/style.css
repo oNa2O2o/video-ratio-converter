@@ -1,0 +1,239 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   顶部导航栏
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.main-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 52px;
+    background: #0f1629;
+    border-bottom: 1px solid #1e2a4a;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    z-index: 1000;
+}
+
+.nav-brand {
+    font-size: 15px;
+    font-weight: 700;
+    color: #4a9eff;
+    margin-right: 24px;
+    letter-spacing: 1px;
+}
+
+.nav-link {
+    color: #666;
+    text-decoration: none;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    margin-right: 4px;
+}
+
+.nav-link:hover {
+    color: #e0e0e0;
+    background: #1a2240;
+}
+
+.nav-link.active {
+    color: #4a9eff;
+    background: #1e3a5f;
+    font-weight: 500;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   页面容器（比例转换工具）
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    padding-top: 92px; /* 导航栏高度 + 间距 */
+}
+
+header { text-align: center; margin-bottom: 40px; }
+header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
+.subtitle { color: #888; font-size: 14px; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   上传区域
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.drop-zone {
+    border: 2px dashed #444;
+    border-radius: 12px;
+    padding: 60px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: #16213e;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+    border-color: #4a9eff;
+    background: #1a2744;
+}
+.drop-zone-content svg { color: #4a9eff; margin-bottom: 16px; }
+.drop-zone-content p { margin-bottom: 8px; }
+.browse-link { color: #4a9eff; cursor: pointer; text-decoration: underline; }
+.hint { color: #666; font-size: 12px; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   输出目录配置
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.output-config { margin-top: 24px; }
+.output-config .section-header { margin-bottom: 12px; }
+.output-path-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.output-path-input {
+    flex: 1;
+    background: #16213e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #e0e0e0;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.output-path-input:focus { border-color: #4a9eff; }
+.output-path-input::placeholder { color: #555; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   文件列表
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.file-list { margin-top: 30px; }
+.section-header {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 16px;
+}
+.section-header h2 { font-size: 18px; }
+
+.file-item {
+    background: #16213e;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.file-item .file-name {
+    font-size: 14px;
+    word-break: break-all;
+    flex: 1;
+    margin-right: 12px;
+}
+.file-item .file-info {
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+}
+
+.tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.tag-vertical { background: #2d1b69; color: #a78bfa; }
+.tag-square { background: #1b4332; color: #6ee7b7; }
+.tag-horizontal { background: #713f12; color: #fbbf24; }
+.tag-arrow { color: #666; font-size: 14px; }
+.tag-target { background: #1e3a5f; color: #7dd3fc; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   按钮
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-primary {
+    background: #4a9eff;
+    color: #fff;
+    width: 100%;
+    margin-top: 16px;
+    font-size: 16px;
+    padding: 14px;
+}
+.btn-primary:hover { background: #3a8eef; }
+.btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+.btn-secondary { background: #333; color: #aaa; }
+.btn-secondary:hover { background: #444; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   进度条
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.progress-section { margin-top: 30px; }
+.progress-section h2 { font-size: 18px; margin-bottom: 16px; }
+.progress-bar-container {
+    background: #16213e;
+    border-radius: 8px;
+    height: 24px;
+    overflow: hidden;
+}
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4a9eff, #7c3aed);
+    border-radius: 8px;
+    width: 0%;
+    transition: width 0.3s;
+}
+.progress-text {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #888;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   处理结果
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.results-section { margin-top: 30px; }
+.results-section h2 { font-size: 18px; margin-bottom: 16px; }
+
+.result-item {
+    background: #16213e;
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.result-item .file-name {
+    font-size: 14px;
+    word-break: break-all;
+}
+.result-item a {
+    color: #4a9eff;
+    text-decoration: none;
+    font-size: 13px;
+}
+.result-item a:hover { text-decoration: underline; }
+
+.error-list { margin-top: 12px; }
+.error-item {
+    background: #2d1b1b;
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 8px;
+    color: #f87171;
+    font-size: 13px;
+}

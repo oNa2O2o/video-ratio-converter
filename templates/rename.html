@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>素材重命名工具</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/rename.css">
+</head>
+<body>
+    <nav class="main-nav">
+        <div class="nav-brand">工具箱</div>
+        <a href="/" class="nav-link">视频比例转换</a>
+        <a href="/rename" class="nav-link active">素材重命名</a>
+    </nav>
+
+    <div class="rename-layout">
+        <!-- 左侧边栏：全局配置 -->
+        <aside class="sidebar">
+            <h2>全局配置</h2>
+            <p class="sidebar-hint">修改此处会同步更新所有素材</p>
+
+            <div class="config-group">
+                <label for="cfg-date">日期</label>
+                <input type="text" id="cfg-date" maxlength="6" placeholder="YYMMDD">
+            </div>
+
+            <div class="config-group">
+                <label for="cfg-region">地区</label>
+                <select id="cfg-region"></select>
+            </div>
+
+            <div class="config-group">
+                <label for="cfg-platform">默认平台</label>
+                <select id="cfg-platform"></select>
+            </div>
+
+            <div class="config-group">
+                <label for="cfg-creator">制作人</label>
+                <select id="cfg-creator"></select>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <h3>API 配置</h3>
+            <div class="config-group">
+                <label for="cfg-api-key">Gemini API Key</label>
+                <div class="api-key-row">
+                    <input type="password" id="cfg-api-key" placeholder="输入你的 API Key">
+                    <button id="toggle-key-vis" class="btn-icon" title="显示/隐藏">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
+                <button id="save-api-key" class="btn btn-sm btn-secondary" style="margin-top:8px;width:100%">保存 Key</button>
+                <p id="api-key-status" class="config-hint"></p>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <header class="page-header">
+                <h1>素材重命名工具</h1>
+                <p class="subtitle">拖入素材 → AI 智能分析 → 标准化命名 → 一键导出</p>
+            </header>
+
+            <!-- 上传区域 -->
+            <div id="rename-drop-zone" class="drop-zone">
+                <div class="drop-zone-content">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p>拖拽素材文件到此处，或 <span class="browse-link">点击选择</span></p>
+                    <p class="hint">支持 MP4, MOV, AVI, MKV, JPG, PNG 等格式</p>
+                </div>
+                <input type="file" id="rename-file-input" multiple accept="video/*,image/*" hidden>
+            </div>
+
+            <!-- 输出目录配置 -->
+            <div class="output-config">
+                <div class="section-header">
+                    <h2>输出目录</h2>
+                </div>
+                <div class="output-path-row">
+                    <input type="text" id="rename-output-path" class="output-path-input"
+                           placeholder="留空则使用默认目录（项目目录/output）">
+                    <button id="rename-browse-output-btn" class="btn btn-secondary">浏览</button>
+                </div>
+            </div>
+
+            <!-- 素材列表 -->
+            <div id="rename-file-list" class="rename-file-list" style="display:none">
+                <div class="section-header">
+                    <h2>素材列表 <span id="file-count" class="file-count"></span></h2>
+                    <div class="header-actions">
+                        <button id="rename-clear-btn" class="btn btn-secondary">清空列表</button>
+                        <button id="rename-export-btn" class="btn btn-primary">导出文件</button>
+                    </div>
+                </div>
+                <div id="rename-file-items"></div>
+            </div>
+
+            <!-- 导出结果 -->
+            <div id="rename-results" class="results-section" style="display:none">
+                <h2>导出完成</h2>
+                <div id="rename-result-items"></div>
+                <div id="rename-error-items" class="error-list"></div>
+                <button id="rename-open-folder-btn" class="btn btn-primary" style="margin-top:16px">
+                    打开输出文件夹
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/rename.js"></script>
+</body>
+</html>
