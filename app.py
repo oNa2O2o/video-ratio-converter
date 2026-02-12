@@ -85,6 +85,20 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4GB
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
+
+
+# ━━━ 版本号（用于缓存失效） ━━━
+APP_VERSION = '2.1.0'
+
+
+@app.after_request
+def add_no_cache_headers(response):
+    """所有响应禁止浏览器缓存，确保每次加载最新版本"""
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
