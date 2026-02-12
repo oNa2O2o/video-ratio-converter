@@ -772,22 +772,72 @@ def export_renamed():
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 端口管理
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _kill_port(port):
+    """杀掉占用指定端口的进程（Windows）"""
+    import socket
+    # 先检测端口是否被占用
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1)
+        sock.connect(('127.0.0.1', port))
+        sock.close()
+        # 端口被占用，尝试杀掉
+        print(f"  [!] Port {port} is in use, killing old process...")
+        try:
+            result = subprocess.run(
+                f'netstat -ano | findstr ":{port}" | findstr "LISTENING"',
+                capture_output=True, text=True, shell=True,
+                **_subprocess_kwargs
+            )
+            for line in result.stdout.strip().split('\n'):
+                parts = line.split()
+                if parts:
+                    pid = parts[-1]
+                    if pid.isdigit() and int(pid) != os.getpid():
+                        subprocess.run(
+                            f'taskkill /F /PID {pid}',
+                            capture_output=True, shell=True,
+                            **_subprocess_kwargs
+                        )
+                        print(f"  [!] Killed old process PID {pid}")
+            import time
+            time.sleep(1)
+        except Exception as e:
+            print(f"  [!] Could not kill old process: {e}")
+        return True
+    except (ConnectionRefusedError, OSError):
+        return False
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 启动入口
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == '__main__':
     try:
+        PORT = 5000
+
+        # 启动前清理旧进程
+        _kill_port(PORT)
+
         print("\n  ========================================")
-        print("  Video Ratio Converter & Rename Tool")
+        print(f"  Video Ratio Converter & Rename Tool v{APP_VERSION}")
         print("  ========================================")
-        print(f"  Web UI:  http://localhost:5000")
-        print(f"  Rename:  http://localhost:5000/rename")
+        print(f"  Web UI:  http://localhost:{PORT}")
+        print(f"  Rename:  http://localhost:{PORT}/rename")
         print(f"  Output:  {OUTPUT_DIR}")
         print(f"  FFmpeg:  {FFMPEG_PATH}")
         print("  Close this window to exit.\n")
 
-        threading.Timer(1.5, lambda: webbrowser.open('http://localhost:5000')).start()
+        threading.Timer(1.5, lambda: webbrowser.open(f'http://localhost:{PORT}')).start()
 
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        app.run(host='0.0.0.0', port=PORT, debug=False)
     except Exception as e:
         err_msg = f"Application crashed:\n{traceback.format_exc()}"
         try:
