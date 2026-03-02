@@ -97,7 +97,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.4.0'
+APP_VERSION = '2.5.0'
 
 
 @app.after_request
@@ -606,7 +606,7 @@ def classify_ratio_rename(w, h):
 # 已知的业务标签集合
 KNOWN_REGIONS = {'JP', 'TC', 'EN', 'TH', 'KR', 'VN', 'ID', 'ES'}
 KNOWN_PLATFORMS = {'FB', 'GG', 'TT'}
-KNOWN_CREATORS = {'ZHM', 'YY', 'ZSY', 'GJY', 'YHR', 'SY', 'DHY', 'CGY', 'QXY'}
+KNOWN_CREATORS = {'ZHM', 'YY', 'ZSY', 'GJY', 'YHR', 'SY', 'DHY', 'CGY', 'QXY', 'CJY', 'WZC', 'RZB'}
 KNOWN_PROPERTIES = {'原创', '迭代', '竞品二创'}
 KNOWN_AUDIENCES = {'男性向', '女性向'}
 KNOWN_RATIOS = {'竖', '方', '横'}

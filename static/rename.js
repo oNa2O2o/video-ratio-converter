@@ -32,7 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
         { label: '盛妍', value: 'SY' },
         { label: '董慧媛', value: 'DHY' },
         { label: '常广瑜', value: 'CGY' },
-        { label: '乔翾宇', value: 'QXY' }
+        { label: '乔翾宇', value: 'QXY' },
+        { label: '崔佳仪', value: 'CJY' },
+        { label: '王仲茨', value: 'WZC' },
+        { label: '任智斌', value: 'RZB' }
     ];
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
