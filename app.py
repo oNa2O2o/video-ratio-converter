@@ -16,6 +16,22 @@ from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
+
+def _get_short_path(path):
+    """获取 Windows 短路径（8.3），避免 bat 中中文路径在 cmd 下乱码"""
+    if sys.platform != 'win32':
+        return str(path)
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(500)
+        r = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, 500)
+        if r and 0 < r < 500:
+            return buf.value
+    except Exception:
+        pass
+    return str(path)
+
+
 # ━━━ Windows 控制台编码修复 ━━━
 if sys.platform == 'win32':
     # 设置控制台代码页为 UTF-8
@@ -97,7 +113,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.5.0'
+APP_VERSION = '2.5.1'
 
 
 @app.after_request
@@ -1191,28 +1207,55 @@ def api_do_update():
         if extract_dir.exists():
             shutil.rmtree(extract_dir)
 
-        # 生成 updater.bat
-        bat_path = exe_dir / '_updater.bat'
-        bat_content = (
-            '@echo off\r\n'
-            'chcp 65001 >nul 2>&1\r\n'
-            'echo.\r\n'
-            'echo  正在更新素材工具箱...\r\n'
-            'echo.\r\n'
-            'timeout /t 3 /nobreak >nul\r\n'
-            f'xcopy /s /e /y "_update_temp\\*" "." >nul 2>&1\r\n'
-            'rmdir /s /q "_update_temp" >nul 2>&1\r\n'
-            'echo  更新完成，正在重启...\r\n'
-            f'start "" "{exe_name}"\r\n'
-            'timeout /t 1 /nobreak >nul\r\n'
-            'del "%~f0"\r\n'
-        )
-        bat_path.write_text(bat_content, encoding='gbk', errors='replace')
-        print(f"  [Update] Generated updater: {bat_path}")
+        # 使用 exe 的短路径（8.3），避免 bat 中中文名在 cmd 下乱码导致找不到文件
+        exe_full = exe_dir / exe_name
+        exe_to_start = _get_short_path(exe_full)
+        use_short_path = exe_to_start != str(exe_full) and exe_to_start.isascii()
 
-        # 启动 updater.bat 并退出当前进程
+        bat_path = exe_dir / '_updater.bat'
+        if use_short_path:
+            bat_content = (
+                '@echo off\r\n'
+                'chcp 65001 >nul 2>&1\r\n'
+                'cd /d "%~dp0"\r\n'
+                'echo.\r\n'
+                'echo  Updating...\r\n'
+                'echo.\r\n'
+                'timeout /t 3 /nobreak >nul\r\n'
+                'xcopy /s /e /y "_update_temp\\*" "." >nul 2>&1\r\n'
+                'rmdir /s /q "_update_temp" >nul 2>&1\r\n'
+                'echo  Done. Restarting...\r\n'
+                f'start "" "{exe_to_start}"\r\n'
+                'timeout /t 1 /nobreak >nul\r\n'
+                'del "%~f0"\r\n'
+            )
+            bat_path.write_text(bat_content, encoding='ascii')
+        else:
+            bat_content = (
+                '@echo off\r\n'
+                'chcp 65001 >nul 2>&1\r\n'
+                'cd /d "%~dp0"\r\n'
+                'echo.\r\n'
+                'echo  正在更新...\r\n'
+                'echo.\r\n'
+                'timeout /t 3 /nobreak >nul\r\n'
+                'xcopy /s /e /y "_update_temp\\*" "." >nul 2>&1\r\n'
+                'rmdir /s /q "_update_temp" >nul 2>&1\r\n'
+                'echo  更新完成，正在重启...\r\n'
+                f'start "" "{exe_name}"\r\n'
+                'timeout /t 1 /nobreak >nul\r\n'
+                'del "%~f0"\r\n'
+            )
+            bat_path.write_text(bat_content, encoding='gbk', errors='replace')
+
+        print(f"  [Update] Generated updater (short_path={use_short_path}), exe={exe_to_start!r}")
+
+        # 启动 updater.bat（优先用短路径调用 bat，避免中文路径在 cmd 中乱码）
+        bat_to_run = _get_short_path(bat_path)
+        if bat_to_run == str(bat_path):
+            bat_to_run = str(bat_path)
         subprocess.Popen(
-            ['cmd', '/c', str(bat_path)],
+            ['cmd', '/c', bat_to_run],
             cwd=str(exe_dir),
             creationflags=subprocess.CREATE_NEW_CONSOLE
         )
