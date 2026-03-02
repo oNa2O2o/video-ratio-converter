@@ -14,7 +14,7 @@ import math
 import zipfile
 from pathlib import Path
 from urllib.request import urlopen, Request
-from urllib.error import URLError
+from urllib.error import URLError, HTTPError
 
 # ━━━ Windows 控制台编码修复 ━━━
 if sys.platform == 'win32':
@@ -1118,6 +1118,13 @@ def check_update_background():
             'html_url': data.get('html_url', '')
         })
         print(f"  [Update] New version available: {latest_tag}")
+    except HTTPError as e:
+        if e.code == 404:
+            # 仓库暂无任何 Release 时 GitHub 返回 404，属正常情况
+            update_info.update({'checked': True, 'available': False})
+        else:
+            print(f"  [Update] Check failed (ignored): {e.code} {e.reason}")
+            update_info.update({'checked': True, 'available': False})
     except Exception as e:
         print(f"  [Update] Check failed (ignored): {e}")
         update_info.update({'checked': True, 'available': False})
