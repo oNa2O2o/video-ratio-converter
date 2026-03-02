@@ -21,7 +21,138 @@ document.addEventListener('DOMContentLoaded', () => {
     // 标签样式映射
     const tagClass = { '竖': 'tag-vertical', '方': 'tag-square', '横': 'tag-horizontal' };
 
-    // 拖拽上传
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 套版管理
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // templates[label] = { path, region, thumbnail }
+    const templates = {};
+
+    document.querySelectorAll('.template-slot').forEach(slot => {
+        const ratio = slot.dataset.ratio;
+        const dropZoneEl = slot.querySelector('.template-drop-zone');
+        const fileInputEl = slot.querySelector('.template-file-input');
+        const placeholder = slot.querySelector('.template-placeholder');
+        const preview = slot.querySelector('.template-preview');
+        const thumb = slot.querySelector('.template-thumb');
+        const info = slot.querySelector('.template-info');
+        const removeBtn = slot.querySelector('.template-remove-btn');
+
+        // 点击上传
+        dropZoneEl.addEventListener('click', (e) => {
+            if (e.target === removeBtn || removeBtn.contains(e.target)) return;
+            if (!templates[ratio]) fileInputEl.click();
+        });
+
+        // 拖拽
+        dropZoneEl.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropZoneEl.classList.add('drag-over');
+        });
+        dropZoneEl.addEventListener('dragleave', () => {
+            dropZoneEl.classList.remove('drag-over');
+        });
+        dropZoneEl.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZoneEl.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) uploadTemplate(ratio, file, slot);
+        });
+
+        fileInputEl.addEventListener('change', () => {
+            if (fileInputEl.files[0]) {
+                uploadTemplate(ratio, fileInputEl.files[0], slot);
+            }
+            fileInputEl.value = '';
+        });
+
+        // 移除
+        removeBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (templates[ratio]) {
+                try {
+                    await fetch('/remove-template', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: templates[ratio].path })
+                    });
+                } catch (_) {}
+                delete templates[ratio];
+            }
+            placeholder.style.display = '';
+            preview.style.display = 'none';
+            removeBtn.style.display = 'none';
+            dropZoneEl.classList.remove('has-template');
+        });
+    });
+
+    async function uploadTemplate(ratio, file, slotEl) {
+        if (!file.name.toLowerCase().endsWith('.png')) {
+            alert('套版必须是 PNG 格式（需要透明通道）');
+            return;
+        }
+
+        const placeholder = slotEl.querySelector('.template-placeholder');
+        const preview = slotEl.querySelector('.template-preview');
+        const thumb = slotEl.querySelector('.template-thumb');
+        const info = slotEl.querySelector('.template-info');
+        const removeBtn = slotEl.querySelector('.template-remove-btn');
+        const dropZoneEl = slotEl.querySelector('.template-drop-zone');
+
+        placeholder.innerHTML = '<span>上传中...</span>';
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('ratio', ratio);
+
+        try {
+            const resp = await fetch('/upload-template', { method: 'POST', body: formData });
+            const data = await resp.json();
+
+            if (data.error) {
+                alert(data.error);
+                placeholder.innerHTML = `
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="4" y="4" width="16" height="16" rx="2"/>
+                        <line x1="12" y1="9" x2="12" y2="15"/>
+                        <line x1="9" y1="12" x2="15" y2="12"/>
+                    </svg>
+                    <span>拖入 PNG 套版</span>`;
+                return;
+            }
+
+            // 保存套版数据
+            templates[ratio] = {
+                path: data.path,
+                region: data.region
+            };
+
+            // 显示预览
+            if (data.thumbnail) {
+                thumb.src = data.thumbnail;
+            }
+            const r = data.region;
+            info.textContent = `${r.template_width}×${r.template_height} | 视频区域: ${r.width}×${r.height} @ (${r.x},${r.y})`;
+
+            placeholder.style.display = 'none';
+            preview.style.display = '';
+            removeBtn.style.display = '';
+            dropZoneEl.classList.add('has-template');
+
+        } catch (err) {
+            alert('套版上传失败: ' + err.message);
+            placeholder.innerHTML = `
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                    <line x1="12" y1="9" x2="12" y2="15"/>
+                    <line x1="9" y1="12" x2="15" y2="12"/>
+                </svg>
+                <span>拖入 PNG 套版</span>`;
+        }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 视频上传
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', e => {
         e.preventDefault();
@@ -104,9 +235,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 uploadedFiles.push(f);
                 const div = document.createElement('div');
                 div.className = 'file-item';
+
+                // 为每个目标比例标注是套版还是模糊
                 const targetTags = f.target_labels
-                    .map(l => `<span class="tag ${tagClass[l]}">${l}</span>`)
+                    .map(l => {
+                        const hasTpl = !!templates[l];
+                        const badge = hasTpl ? ' 🖼' : '';
+                        return `<span class="tag ${tagClass[l]}" title="${hasTpl ? '使用套版' : '模糊背景'}">${l}${badge}</span>`;
+                    })
                     .join(' ');
+
                 div.innerHTML = `
                     <span class="file-name">${f.original_name}</span>
                     <span class="file-info">
@@ -124,6 +262,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 处理与进度
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     processBtn.addEventListener('click', async () => {
         if (!uploadedFiles.length) return;
 
@@ -141,7 +282,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     files: uploadedFiles,
-                    output_dir: outputPathInput.value.trim()
+                    output_dir: outputPathInput.value.trim(),
+                    templates: templates
                 })
             });
             const data = await resp.json();

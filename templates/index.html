@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>素材工具箱</title>
-    <link rel="stylesheet" href="/static/style.css?v=2.2.0">
+    <link rel="stylesheet" href="/static/style.css?v=2.3.1">
 </head>
 <body>
     <nav class="main-nav">
@@ -13,63 +13,130 @@
         <a href="/rename" class="nav-link">素材重命名</a>
     </nav>
 
-    <div class="container">
-        <header>
-            <h1>视频比例转换</h1>
-            <p class="subtitle">上传视频，自动生成其他比例版本（模糊背景填充）</p>
-        </header>
+    <div class="page-layout">
+        <!-- ━━━ 左侧主内容 ━━━ -->
+        <div class="main-column">
+            <header>
+                <h1>视频比例转换</h1>
+                <p class="subtitle">上传视频，自动生成其他比例版本</p>
+            </header>
 
-        <div id="drop-zone" class="drop-zone">
-            <div class="drop-zone-content">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                <p>拖拽视频文件到此处，或 <span class="browse-link">点击选择</span></p>
-                <p class="hint">支持 MP4, AVI, MOV, MKV 等格式</p>
+            <div id="drop-zone" class="drop-zone">
+                <div class="drop-zone-content">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p>拖拽视频文件到此处，或 <span class="browse-link">点击选择</span></p>
+                    <p class="hint">支持 MP4, AVI, MOV, MKV 等格式</p>
+                </div>
+                <input type="file" id="file-input" multiple accept="video/*" hidden>
             </div>
-            <input type="file" id="file-input" multiple accept="video/*" hidden>
+
+            <div class="output-config">
+                <div class="section-header"><h2>输出目录</h2></div>
+                <div class="output-path-row">
+                    <input type="text" id="output-path" class="output-path-input"
+                           placeholder="留空则使用默认目录（项目目录/output）">
+                    <button id="browse-output-btn" class="btn btn-secondary">浏览</button>
+                </div>
+            </div>
+
+            <div id="file-list" class="file-list" style="display:none">
+                <div class="section-header">
+                    <h2>已上传文件</h2>
+                    <button id="clear-btn" class="btn btn-secondary">清空列表</button>
+                </div>
+                <div id="file-items"></div>
+                <button id="process-btn" class="btn btn-primary">开始处理</button>
+            </div>
+
+            <div id="progress-section" class="progress-section" style="display:none">
+                <h2>处理进度</h2>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <p id="progress-text" class="progress-text"></p>
+            </div>
+
+            <div id="results-section" class="results-section" style="display:none">
+                <h2>处理结果</h2>
+                <div id="result-items"></div>
+                <div id="error-items" class="error-list"></div>
+                <button id="open-folder-btn" class="btn btn-primary" style="margin-top: 16px;">
+                    打开输出文件夹
+                </button>
+            </div>
         </div>
 
-        <div class="output-config">
-            <div class="section-header">
-                <h2>输出目录</h2>
-            </div>
-            <div class="output-path-row">
-                <input type="text" id="output-path" class="output-path-input"
-                       placeholder="留空则使用默认目录（项目目录/output）">
-                <button id="browse-output-btn" class="btn btn-secondary">浏览</button>
-            </div>
-        </div>
+        <!-- ━━━ 右侧套版栏 ━━━ -->
+        <aside class="template-sidebar">
+            <h3 class="sidebar-title">套版设置</h3>
+            <p class="sidebar-hint">上传 PNG 透明底图，视频嵌入透明区域。<br>未设置则使用模糊背景。</p>
 
-        <div id="file-list" class="file-list" style="display:none">
-            <div class="section-header">
-                <h2>已上传文件</h2>
-                <button id="clear-btn" class="btn btn-secondary">清空列表</button>
+            <div class="template-slot" data-ratio="竖" data-ratio-key="9:16">
+                <div class="template-slot-label"><span class="tag tag-vertical">竖 9:16</span></div>
+                <div class="template-drop-zone">
+                    <input type="file" class="template-file-input" accept=".png" hidden>
+                    <div class="template-placeholder">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="6" y="3" width="12" height="18" rx="2"/>
+                            <line x1="12" y1="9" x2="12" y2="15"/>
+                            <line x1="9" y1="12" x2="15" y2="12"/>
+                        </svg>
+                        <span>拖入 PNG</span>
+                    </div>
+                    <div class="template-preview" style="display:none">
+                        <img class="template-thumb" src="" alt="">
+                        <div class="template-info"></div>
+                    </div>
+                </div>
+                <button class="template-remove-btn" style="display:none">移除</button>
             </div>
-            <div id="file-items"></div>
-            <button id="process-btn" class="btn btn-primary">开始处理</button>
-        </div>
 
-        <div id="progress-section" class="progress-section" style="display:none">
-            <h2>处理进度</h2>
-            <div class="progress-bar-container">
-                <div id="progress-bar" class="progress-bar"></div>
+            <div class="template-slot" data-ratio="方" data-ratio-key="1:1">
+                <div class="template-slot-label"><span class="tag tag-square">方 1:1</span></div>
+                <div class="template-drop-zone">
+                    <input type="file" class="template-file-input" accept=".png" hidden>
+                    <div class="template-placeholder">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                            <line x1="12" y1="9" x2="12" y2="15"/>
+                            <line x1="9" y1="12" x2="15" y2="12"/>
+                        </svg>
+                        <span>拖入 PNG</span>
+                    </div>
+                    <div class="template-preview" style="display:none">
+                        <img class="template-thumb" src="" alt="">
+                        <div class="template-info"></div>
+                    </div>
+                </div>
+                <button class="template-remove-btn" style="display:none">移除</button>
             </div>
-            <p id="progress-text" class="progress-text"></p>
-        </div>
 
-        <div id="results-section" class="results-section" style="display:none">
-            <h2>处理结果</h2>
-            <div id="result-items"></div>
-            <div id="error-items" class="error-list"></div>
-            <button id="open-folder-btn" class="btn btn-primary" style="margin-top: 16px;">
-                打开输出文件夹
-            </button>
-        </div>
+            <div class="template-slot" data-ratio="横" data-ratio-key="16:9">
+                <div class="template-slot-label"><span class="tag tag-horizontal">横 16:9</span></div>
+                <div class="template-drop-zone">
+                    <input type="file" class="template-file-input" accept=".png" hidden>
+                    <div class="template-placeholder">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="6" width="18" height="12" rx="2"/>
+                            <line x1="12" y1="9" x2="12" y2="15"/>
+                            <line x1="9" y1="12" x2="15" y2="12"/>
+                        </svg>
+                        <span>拖入 PNG</span>
+                    </div>
+                    <div class="template-preview" style="display:none">
+                        <img class="template-thumb" src="" alt="">
+                        <div class="template-info"></div>
+                    </div>
+                </div>
+                <button class="template-remove-btn" style="display:none">移除</button>
+            </div>
+        </aside>
     </div>
 
-    <script src="/static/script.js?v=2.2.0"></script>
+    <script src="/static/script.js?v=2.3.1"></script>
 </body>
 </html>

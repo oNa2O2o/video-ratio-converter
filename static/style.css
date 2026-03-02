@@ -54,17 +54,33 @@ body {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   页面容器（比例转换工具）
+   左右两栏布局
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.page-layout {
+    display: flex;
+    gap: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 24px;
+    padding-top: 76px; /* 导航栏高度 + 间距 */
+    align-items: flex-start;
+}
+
+.main-column {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 兼容重命名页面的旧 container */
 .container {
     max-width: 800px;
     margin: 0 auto;
     padding: 40px 20px;
-    padding-top: 92px; /* 导航栏高度 + 间距 */
+    padding-top: 92px;
 }
 
-header { text-align: center; margin-bottom: 40px; }
-header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
+header { text-align: center; margin-bottom: 32px; }
+header h1 { font-size: 26px; color: #fff; margin-bottom: 6px; }
 .subtitle { color: #888; font-size: 14px; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -73,7 +89,7 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
 .drop-zone {
     border: 2px dashed #444;
     border-radius: 12px;
-    padding: 60px 20px;
+    padding: 48px 20px;
     text-align: center;
     cursor: pointer;
     transition: all 0.3s;
@@ -83,8 +99,8 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
     border-color: #4a9eff;
     background: #1a2744;
 }
-.drop-zone-content svg { color: #4a9eff; margin-bottom: 16px; }
-.drop-zone-content p { margin-bottom: 8px; }
+.drop-zone-content svg { color: #4a9eff; margin-bottom: 12px; }
+.drop-zone-content p { margin-bottom: 6px; }
 .browse-link { color: #4a9eff; cursor: pointer; text-decoration: underline; }
 .hint { color: #666; font-size: 12px; }
 
@@ -115,30 +131,30 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    文件列表
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-.file-list { margin-top: 30px; }
+.file-list { margin-top: 24px; }
 .section-header {
     display: flex; justify-content: space-between;
-    align-items: center; margin-bottom: 16px;
+    align-items: center; margin-bottom: 12px;
 }
-.section-header h2 { font-size: 18px; }
+.section-header h2 { font-size: 17px; }
 
 .file-item {
     background: #16213e;
     border-radius: 8px;
-    padding: 14px 18px;
-    margin-bottom: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 .file-item .file-name {
-    font-size: 14px;
+    font-size: 13px;
     word-break: break-all;
     flex: 1;
-    margin-right: 12px;
+    margin-right: 10px;
 }
 .file-item .file-info {
-    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+    display: flex; gap: 6px; align-items: center; flex-shrink: 0;
 }
 
 .tag {
@@ -152,7 +168,6 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
 .tag-square { background: #1b4332; color: #6ee7b7; }
 .tag-horizontal { background: #713f12; color: #fbbf24; }
 .tag-arrow { color: #666; font-size: 14px; }
-.tag-target { background: #1e3a5f; color: #7dd3fc; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    按钮
@@ -169,9 +184,9 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
     background: #4a9eff;
     color: #fff;
     width: 100%;
-    margin-top: 16px;
-    font-size: 16px;
-    padding: 14px;
+    margin-top: 14px;
+    font-size: 15px;
+    padding: 12px;
 }
 .btn-primary:hover { background: #3a8eef; }
 .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
@@ -181,12 +196,12 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    进度条
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-.progress-section { margin-top: 30px; }
-.progress-section h2 { font-size: 18px; margin-bottom: 16px; }
+.progress-section { margin-top: 24px; }
+.progress-section h2 { font-size: 17px; margin-bottom: 12px; }
 .progress-bar-container {
     background: #16213e;
     border-radius: 8px;
-    height: 24px;
+    height: 22px;
     overflow: hidden;
 }
 .progress-bar {
@@ -197,7 +212,7 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
     transition: width 0.3s;
 }
 .progress-text {
-    margin-top: 10px;
+    margin-top: 8px;
     font-size: 13px;
     color: #888;
 }
@@ -205,20 +220,20 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    处理结果
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-.results-section { margin-top: 30px; }
-.results-section h2 { font-size: 18px; margin-bottom: 16px; }
+.results-section { margin-top: 24px; }
+.results-section h2 { font-size: 17px; margin-bottom: 12px; }
 
 .result-item {
     background: #16213e;
     border-radius: 8px;
-    padding: 12px 18px;
-    margin-bottom: 8px;
+    padding: 10px 16px;
+    margin-bottom: 6px;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 .result-item .file-name {
-    font-size: 14px;
+    font-size: 13px;
     word-break: break-all;
 }
 .result-item a {
@@ -228,12 +243,158 @@ header h1 { font-size: 28px; color: #fff; margin-bottom: 8px; }
 }
 .result-item a:hover { text-decoration: underline; }
 
-.error-list { margin-top: 12px; }
+.error-list { margin-top: 10px; }
 .error-item {
     background: #2d1b1b;
     border-radius: 8px;
-    padding: 12px 18px;
-    margin-bottom: 8px;
+    padding: 10px 16px;
+    margin-bottom: 6px;
     color: #f87171;
     font-size: 13px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   右侧套版栏
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.template-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 76px;
+    background: #131a30;
+    border: 1px solid #1e2a4a;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.sidebar-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin-bottom: 6px;
+}
+
+.sidebar-hint {
+    font-size: 11px;
+    color: #555;
+    line-height: 1.5;
+    margin-bottom: 14px;
+}
+
+.template-sidebar .template-slot {
+    margin-bottom: 12px;
+}
+.template-sidebar .template-slot:last-child {
+    margin-bottom: 0;
+}
+
+.template-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.template-slot-label {
+    margin-bottom: 6px;
+}
+
+.template-drop-zone {
+    border: 1px dashed #333;
+    border-radius: 8px;
+    background: #16213e;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+}
+
+.template-drop-zone:hover,
+.template-drop-zone.drag-over {
+    border-color: #4a9eff;
+    background: #1a2744;
+}
+
+.template-drop-zone.has-template {
+    border-style: solid;
+    border-color: #2d6a4f;
+    cursor: default;
+}
+
+.template-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: #444;
+    padding: 8px;
+}
+.template-placeholder svg {
+    color: #3a3a3a;
+}
+.template-placeholder span {
+    font-size: 11px;
+}
+
+.template-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px;
+    width: 100%;
+}
+.template-thumb {
+    max-width: 100%;
+    max-height: 90px;
+    border-radius: 4px;
+    object-fit: contain;
+    background: repeating-conic-gradient(#1a1a1a 0% 25%, #222 0% 50%) 50% / 10px 10px;
+}
+.template-info {
+    margin-top: 4px;
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    line-height: 1.4;
+    word-break: break-all;
+}
+
+.template-remove-btn {
+    margin-top: 4px;
+    padding: 2px 10px !important;
+    font-size: 11px !important;
+    align-self: center;
+    background: #2a1a1a;
+    color: #f87171;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.template-remove-btn:hover {
+    background: #3a1a1a;
+}
+
+/* 响应式：小屏竖排 */
+@media (max-width: 800px) {
+    .page-layout {
+        flex-direction: column;
+    }
+    .template-sidebar {
+        width: 100%;
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .sidebar-title, .sidebar-hint {
+        width: 100%;
+    }
+    .template-sidebar .template-slot {
+        flex: 1;
+        min-width: 150px;
+        margin-bottom: 0;
+    }
 }

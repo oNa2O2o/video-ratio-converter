@@ -8,6 +8,9 @@ import threading
 import webbrowser
 import shutil
 import traceback
+import base64
+import io
+import math
 from pathlib import Path
 
 # ━━━ Windows 控制台编码修复 ━━━
@@ -80,8 +83,10 @@ except Exception as e:
     _fatal_error(f"Flask 初始化失败:\n{traceback.format_exc()}")
 
 UPLOAD_DIR = BASE_DIR / "uploads"
+TEMPLATE_DIR = BASE_DIR / "uploads" / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 UPLOAD_DIR.mkdir(exist_ok=True)
+TEMPLATE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4GB
@@ -89,7 +94,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.2.0'
+APP_VERSION = '2.3.0'
 
 
 @app.after_request
@@ -160,8 +165,9 @@ def get_video_info(filepath):
             str(filepath)
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                                    **_subprocess_kwargs)
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    encoding='utf-8', errors='replace',
+                                    timeout=30, **_subprocess_kwargs)
             data = json.loads(result.stdout)
             for stream in data.get('streams', []):
                 if stream.get('codec_type') == 'video':
@@ -177,8 +183,9 @@ def get_video_info(filepath):
     # 回退：解析 ffmpeg -i 的 stderr 输出
     cmd = [FFMPEG_PATH, '-i', str(filepath)]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                                **_subprocess_kwargs)
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                encoding='utf-8', errors='replace',
+                                timeout=30, **_subprocess_kwargs)
         stderr = result.stderr
         match = re.search(r'Stream.*Video.*?(\d{2,5})x(\d{2,5})', stderr)
         if match:
@@ -299,18 +306,200 @@ def process_video(input_path, target_ratio, output_path):
 
     process = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        encoding='utf-8', errors='replace',
         **_subprocess_kwargs
     )
     _, stderr = process.communicate()
 
     if process.returncode != 0:
-        raise RuntimeError(f"FFmpeg 错误: {stderr.decode('utf-8', errors='replace')}")
+        raise RuntimeError(f"FFmpeg 错误: {stderr}")
 
     return output_path
 
 
-def process_task(task_id, files_info, output_dir=None):
-    """后台任务：处理所有上传的视频"""
+def detect_transparent_region(template_path, threshold=10, col_row_pct=0.5):
+    """检测 PNG 套版的透明区域（视频放置位置）
+
+    逻辑：逐列/逐行统计透明像素占比，>50% 透明的列/行才算"透明"，
+    取这些列/行的连续范围作为透明区域。
+    避免零星透明像素（圆角、抗锯齿）把检测范围拉到整张图。
+
+    返回: {x, y, width, height, template_width, template_height}
+    """
+    if not HAS_PIL:
+        raise RuntimeError("需要 Pillow 库来检测套版透明区域")
+
+    img = PILImage.open(template_path).convert('RGBA')
+    alpha = img.split()[3]  # Alpha 通道
+    w, h = img.size
+
+    # 逐列统计：该列中透明像素(alpha < threshold)占比 > col_row_pct 才算透明列
+    transparent_cols = []
+    for col in range(w):
+        count = sum(1 for row in range(h) if alpha.getpixel((col, row)) < threshold)
+        if count / h >= col_row_pct:
+            transparent_cols.append(col)
+
+    # 逐行统计：该行中透明像素占比 > col_row_pct 才算透明行
+    transparent_rows = []
+    for row in range(h):
+        count = sum(1 for col in range(w) if alpha.getpixel((col, row)) < threshold)
+        if count / w >= col_row_pct:
+            transparent_rows.append(row)
+
+    if not transparent_cols or not transparent_rows:
+        # 统计法没结果，回退到 getbbox 兜底
+        mask = alpha.point(lambda x: 255 if x < 128 else 0)
+        bbox = mask.getbbox()
+        if not bbox:
+            return None
+        region = {
+            'x': bbox[0], 'y': bbox[1],
+            'width': bbox[2] - bbox[0], 'height': bbox[3] - bbox[1],
+            'template_width': w, 'template_height': h
+        }
+        print(f"  [Template] Fallback bbox: ({region['x']},{region['y']}) "
+              f"{region['width']}x{region['height']} in {w}x{h}")
+        return region
+
+    # 取透明列/行的最小~最大范围
+    x1 = min(transparent_cols)
+    x2 = max(transparent_cols) + 1  # 不含右边界
+    y1 = min(transparent_rows)
+    y2 = max(transparent_rows) + 1
+
+    region = {
+        'x': x1,
+        'y': y1,
+        'width': x2 - x1,
+        'height': y2 - y1,
+        'template_width': w,
+        'template_height': h
+    }
+
+    print(f"  [Template] Detected transparent region: "
+          f"({region['x']},{region['y']}) {region['width']}x{region['height']} "
+          f"in {w}x{h} template "
+          f"(cols: {len(transparent_cols)}/{w}, rows: {len(transparent_rows)}/{h})")
+
+    return region
+
+
+def process_video_with_template(input_path, template_path, region, output_path,
+                                target_ratio=None):
+    """使用套版合成视频
+
+    核心逻辑（与 process_video 保持一致的缩放）：
+      1. 输出分辨率 = 根据视频尺寸 + 目标比例计算（和无套版时完全一样）
+      2. 视频缩放 = 和 process_video 完全一样（fit 在画布内，不放大）
+      3. 位置 = 视频居中对齐到套版的透明区域（而非画布居中）
+      4. 套版 PNG 缩放到输出尺寸，叠在最上层
+
+    合成层次：
+      底层: 黑色画布 (输出尺寸，和无套版时一致)
+      中层: 源视频 (原始缩放，对齐透明区域)
+      顶层: 套版 PNG (缩放至输出尺寸)
+    """
+    info = get_video_info(input_path)
+    if not info:
+        raise ValueError(f"无法读取视频信息: {input_path}")
+
+    vid_w, vid_h = info['width'], info['height']
+
+    # ━━━ 第1步：输出画布尺寸由视频决定（和 process_video 一致）━━━
+    if target_ratio:
+        out_w, out_h = calculate_output_dimensions(vid_w, vid_h, target_ratio)
+    else:
+        out_w, out_h = make_even(vid_w), make_even(vid_h)
+
+    # ━━━ 第2步：视频缩放 — 和 process_video 完全一样 ━━━
+    # process_video 用: scale=min(out_w,iw):min(out_h,ih):force_original_aspect_ratio=decrease
+    # 等价于: fit 在画布内，不放大，保持比例
+    vid_scale = min(out_w / vid_w, out_h / vid_h, 1.0)  # 不超过1.0=不放大
+    scaled_vid_w = make_even(max(2, round(vid_w * vid_scale)))
+    scaled_vid_h = make_even(max(2, round(vid_h * vid_scale)))
+
+    # ━━━ 第3步：计算透明区域在输出坐标系中的中心位置 ━━━
+    tpl_orig_w = int(region['template_width'])
+    tpl_orig_h = int(region['template_height'])
+    scale_x = out_w / tpl_orig_w
+    scale_y = out_h / tpl_orig_h
+
+    # 透明区域等比缩放到输出坐标系
+    rx = int(region['x'] * scale_x)
+    ry = int(region['y'] * scale_y)
+    rw = math.ceil(region['width'] * scale_x)
+    rh = math.ceil(region['height'] * scale_y)
+
+    # 透明区域的中心点
+    region_cx = rx + rw // 2
+    region_cy = ry + rh // 2
+
+    # ━━━ 第4步：视频对齐到透明区域中心（而非画布居中）━━━
+    offset_x = region_cx - scaled_vid_w // 2
+    offset_y = region_cy - scaled_vid_h // 2
+
+    print(f"  [Template] Source video: {vid_w}x{vid_h}")
+    print(f"  [Template] Output canvas: {out_w}x{out_h} (target_ratio={target_ratio})")
+    print(f"  [Template] Video (same as blur mode): {scaled_vid_w}x{scaled_vid_h}")
+    print(f"  [Template] Template orig: {tpl_orig_w}x{tpl_orig_h}")
+    print(f"  [Template] Transparent region (scaled): ({rx},{ry}) {rw}x{rh}, "
+          f"center=({region_cx},{region_cy})")
+    print(f"  [Template] Video position: ({offset_x},{offset_y})")
+    print(f"  [Template] Compare: blur mode would be "
+          f"({(out_w-scaled_vid_w)//2},{(out_h-scaled_vid_h)//2})")
+
+    # FFmpeg 滤镜：
+    #   1. 视频缩放 — 和 process_video 一样的逻辑
+    #   2. 黑色画布
+    #   3. 视频放到透明区域中心位置
+    #   4. 套版缩放到画布大小，叠在最上层
+    filter_complex = (
+        f"[0:v]scale='min({out_w},iw)':'min({out_h},ih)'"
+        f":force_original_aspect_ratio=decrease[vid];"
+        f"color=c=black:s={out_w}x{out_h}[base];"
+        f"[base][vid]overlay={offset_x}:{offset_y}:shortest=1[withvid];"
+        f"[1:v]scale={out_w}:{out_h}[tpl];"
+        f"[withvid][tpl]overlay=0:0:format=auto:shortest=1[out]"
+    )
+
+    cmd = [
+        FFMPEG_PATH, '-y',
+        '-i', str(input_path),
+        '-loop', '1', '-i', str(template_path),
+        '-filter_complex', filter_complex,
+        '-map', '[out]', '-map', '0:a?',
+        '-c:v', 'libx264', '-crf', '18', '-preset', 'medium',
+        '-c:a', 'copy',
+        '-movflags', '+faststart',
+        '-shortest',
+        str(output_path)
+    ]
+
+    print(f"  [Template] FFmpeg filter: {filter_complex}")
+
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        encoding='utf-8', errors='replace',
+        **_subprocess_kwargs
+    )
+    _, stderr = process.communicate()
+
+    if process.returncode != 0:
+        print(f"  [Template] FFmpeg FAILED: {stderr[:500]}")
+        raise RuntimeError(f"FFmpeg 错误: {stderr}")
+
+    print(f"  [Template] Success!")
+    return output_path
+
+
+def process_task(task_id, files_info, output_dir=None, templates=None):
+    """后台任务：处理所有上传的视频（支持套版合成）
+    templates: dict, 格式 {"9:16": {"path": "...", "region": {...}}, ...}
+    """
+    if templates is None:
+        templates = {}
+
     actual_output_dir = Path(output_dir) if output_dir else OUTPUT_DIR
     actual_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -341,12 +530,25 @@ def process_task(task_id, files_info, output_dir=None):
                 output_path = actual_output_dir / f"{stem}_{counter}{ext}"
                 counter += 1
 
+            # 判断是否有对应比例的套版
+            tpl = templates.get(target_ratio)
+            mode_label = "套版" if tpl else "模糊"
+            print(f"  [{mode_label}] {original_name} -> {target_ratio}, tpl={'YES path=' + tpl['path'] if tpl else 'NO'}")
             progress_store[task_id]['current_file'] = (
-                f"{original_name} → {RATIO_LABELS[target_ratio]}"
+                f"{original_name} → {RATIO_LABELS[target_ratio]}（{mode_label}）"
             )
 
             try:
-                process_video(input_path, target_ratio, output_path)
+                if tpl and tpl.get('path') and tpl.get('region'):
+                    # 使用套版合成
+                    process_video_with_template(
+                        input_path, tpl['path'], tpl['region'], output_path,
+                        target_ratio=target_ratio
+                    )
+                else:
+                    # 使用模糊背景
+                    process_video(input_path, target_ratio, output_path)
+
                 progress_store[task_id]['results'].append({
                     'filename': output_path.name,
                     'ratio': target_ratio,
@@ -362,9 +564,19 @@ def process_task(task_id, files_info, output_dir=None):
             completed += 1
             progress_store[task_id]['completed'] = completed
 
+    # 清理上传的临时视频文件
     for file_info in files_info:
         try:
             os.remove(file_info['path'])
+        except OSError:
+            pass
+
+    # 清理临时套版文件
+    for tpl in templates.values():
+        try:
+            tpl_path = tpl.get('path', '')
+            if tpl_path and os.path.exists(tpl_path):
+                os.remove(tpl_path)
         except OSError:
             pass
 
@@ -556,12 +768,79 @@ def upload():
     return jsonify({'files': uploaded})
 
 
+@app.route('/upload-template', methods=['POST'])
+def upload_template():
+    """上传套版 PNG，检测透明区域，返回区域信息和缩略图预览"""
+    if 'file' not in request.files:
+        return jsonify({'error': '没有选择文件'}), 400
+
+    f = request.files['file']
+    ratio_label = request.form.get('ratio', '')
+
+    if not f.filename:
+        return jsonify({'error': '文件名为空'}), 400
+
+    ext = Path(f.filename).suffix.lower()
+    if ext != '.png':
+        return jsonify({'error': '套版必须是 PNG 格式（需要透明通道）'}), 400
+
+    # 保存套版文件
+    template_id = str(uuid.uuid4())
+    save_path = TEMPLATE_DIR / f"template_{template_id}.png"
+    f.save(str(save_path))
+
+    # 检测透明区域
+    try:
+        region = detect_transparent_region(str(save_path))
+    except Exception as e:
+        save_path.unlink(missing_ok=True)
+        return jsonify({'error': f'检测透明区域失败: {str(e)}'}), 400
+
+    if not region:
+        save_path.unlink(missing_ok=True)
+        return jsonify({'error': '未在套版中检测到透明区域，请确保 PNG 包含透明（alpha=0）区域'}), 400
+
+    # 生成缩略图 base64 供前端预览
+    thumb_b64 = ''
+    try:
+        with PILImage.open(save_path) as img:
+            thumb = img.copy()
+            thumb.thumbnail((300, 300))
+            buf = io.BytesIO()
+            thumb.save(buf, format='PNG')
+            thumb_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    except Exception:
+        pass
+
+    return jsonify({
+        'template_id': template_id,
+        'path': str(save_path),
+        'region': region,
+        'thumbnail': f'data:image/png;base64,{thumb_b64}' if thumb_b64 else '',
+        'ratio_label': ratio_label
+    })
+
+
+@app.route('/remove-template', methods=['POST'])
+def remove_template():
+    """移除已上传的套版文件"""
+    data = request.get_json()
+    tpl_path = data.get('path', '')
+    if tpl_path:
+        try:
+            Path(tpl_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+    return jsonify({'ok': True})
+
+
 @app.route('/process', methods=['POST'])
 def process():
-    """开始处理上传的视频"""
+    """开始处理上传的视频（支持套版合成）"""
     data = request.get_json()
     files_info = data.get('files', [])
     custom_output_dir = data.get('output_dir', '').strip()
+    raw_templates = data.get('templates', {})
 
     if not files_info:
         return jsonify({'error': '没有文件需要处理'}), 400
@@ -575,8 +854,21 @@ def process():
     else:
         target_dir = OUTPUT_DIR
 
+    # 将前端传来的 label-key 套版映射转换为 ratio-key 格式
+    # 前端发送 {"竖": {...}, "方": {...}, "横": {...}}
+    # 后端需要 {"9:16": {...}, "1:1": {...}, "16:9": {...}}
+    templates = {}
+    for label, tpl_data in raw_templates.items():
+        ratio_key = LABEL_TO_RATIO.get(label, '')
+        if ratio_key and tpl_data:
+            templates[ratio_key] = tpl_data
+
     task_id = str(uuid.uuid4())
-    thread = threading.Thread(target=process_task, args=(task_id, files_info, str(target_dir)))
+    thread = threading.Thread(
+        target=process_task,
+        args=(task_id, files_info, str(target_dir)),
+        kwargs={'templates': templates}
+    )
     thread.daemon = True
     thread.start()
 
@@ -789,6 +1081,7 @@ def _kill_port(port):
             result = subprocess.run(
                 f'netstat -ano | findstr ":{port}" | findstr "LISTENING"',
                 capture_output=True, text=True, shell=True,
+                encoding='utf-8', errors='replace',
                 **_subprocess_kwargs
             )
             for line in result.stdout.strip().split('\n'):
