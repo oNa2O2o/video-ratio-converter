@@ -11,7 +11,10 @@ import traceback
 import base64
 import io
 import math
+import zipfile
 from pathlib import Path
+from urllib.request import urlopen, Request
+from urllib.error import URLError
 
 # ━━━ Windows 控制台编码修复 ━━━
 if sys.platform == 'win32':
@@ -94,7 +97,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.3.0'
+APP_VERSION = '2.4.0'
 
 
 @app.after_request
@@ -721,7 +724,12 @@ def parse_filename_local(filename):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', active_tab='converter')
+
+
+@app.route('/rename')
+def rename_redirect():
+    return render_template('index.html', active_tab='rename')
 
 
 @app.route('/upload', methods=['POST'])
@@ -951,10 +959,6 @@ def open_folder():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Flask 路由 - 素材重命名工具
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.route('/rename')
-def rename_page():
-    """素材重命名工具页面"""
-    return render_template('rename.html')
 
 
 @app.route('/api/upload-for-rename', methods=['POST'])
@@ -1064,6 +1068,166 @@ def export_renamed():
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 自动更新 — 基于 GitHub Releases
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GITHUB_REPO = 'oNa2O2o/video-ratio-converter'
+GITHUB_API_URL = f'https://api.github.com/repos/{GITHUB_REPO}/releases/latest'
+
+update_info = {'checked': False, 'available': False}
+
+
+def _parse_version(v):
+    """'v2.4.0' / '2.4.0' -> (2, 4, 0)"""
+    return tuple(int(x) for x in re.sub(r'^v', '', v.strip()).split('.'))
+
+
+def check_update_background():
+    """后台线程检查 GitHub 是否有新版本（仅打包模式执行）"""
+    if not getattr(sys, 'frozen', False):
+        return
+    try:
+        req = Request(GITHUB_API_URL, headers={'Accept': 'application/vnd.github.v3+json'})
+        with urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+
+        latest_tag = data.get('tag_name', '')
+        if not latest_tag:
+            return
+
+        current_ver = _parse_version(APP_VERSION)
+        latest_ver = _parse_version(latest_tag)
+
+        if latest_ver <= current_ver:
+            update_info.update({'checked': True, 'available': False})
+            return
+
+        download_url = ''
+        for asset in data.get('assets', []):
+            name = asset.get('name', '')
+            if name.endswith('.zip'):
+                download_url = asset.get('browser_download_url', '')
+                break
+
+        update_info.update({
+            'checked': True,
+            'available': True,
+            'latest': latest_tag,
+            'current': APP_VERSION,
+            'download_url': download_url,
+            'release_notes': data.get('body', '') or '',
+            'html_url': data.get('html_url', '')
+        })
+        print(f"  [Update] New version available: {latest_tag}")
+    except Exception as e:
+        print(f"  [Update] Check failed (ignored): {e}")
+        update_info.update({'checked': True, 'available': False})
+
+
+@app.route('/api/check-update')
+def api_check_update():
+    """前端查询更新状态"""
+    return jsonify(update_info)
+
+
+@app.route('/api/do-update', methods=['POST'])
+def api_do_update():
+    """执行一键更新：下载 -> 解压 -> 生成 updater.bat -> 退出"""
+    if not getattr(sys, 'frozen', False):
+        return jsonify({'error': '开发模式不支持自动更新'}), 400
+
+    if not update_info.get('available') or not update_info.get('download_url'):
+        return jsonify({'error': '没有可用的更新'}), 400
+
+    download_url = update_info['download_url']
+    exe_dir = Path(sys.executable).parent
+    temp_dir = exe_dir / '_update_temp'
+    exe_name = Path(sys.executable).name
+
+    try:
+        # 清理旧的临时目录
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # 下载 ZIP
+        zip_path = temp_dir / 'update.zip'
+        print(f"  [Update] Downloading: {download_url}")
+        req = Request(download_url, headers={'Accept': 'application/octet-stream'})
+        with urlopen(req, timeout=120) as resp:
+            zip_path.write_bytes(resp.read())
+        print(f"  [Update] Downloaded: {zip_path.stat().st_size // 1024}KB")
+
+        # 解压
+        extract_dir = temp_dir / 'extracted'
+        with zipfile.ZipFile(str(zip_path), 'r') as zf:
+            zf.extractall(str(extract_dir))
+        zip_path.unlink()
+
+        # 找到解压后的实际内容目录（ZIP 可能有一层根目录）
+        contents = list(extract_dir.iterdir())
+        if len(contents) == 1 and contents[0].is_dir():
+            source_dir = contents[0]
+        else:
+            source_dir = extract_dir
+
+        # 将内容移到 temp_dir 根下
+        for item in source_dir.iterdir():
+            dest = temp_dir / item.name
+            if dest.exists():
+                if dest.is_dir():
+                    shutil.rmtree(dest)
+                else:
+                    dest.unlink()
+            shutil.move(str(item), str(dest))
+
+        # 清理 extracted 目录
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+
+        # 生成 updater.bat
+        bat_path = exe_dir / '_updater.bat'
+        bat_content = (
+            '@echo off\r\n'
+            'chcp 65001 >nul 2>&1\r\n'
+            'echo.\r\n'
+            'echo  正在更新素材工具箱...\r\n'
+            'echo.\r\n'
+            'timeout /t 3 /nobreak >nul\r\n'
+            f'xcopy /s /e /y "_update_temp\\*" "." >nul 2>&1\r\n'
+            'rmdir /s /q "_update_temp" >nul 2>&1\r\n'
+            'echo  更新完成，正在重启...\r\n'
+            f'start "" "{exe_name}"\r\n'
+            'timeout /t 1 /nobreak >nul\r\n'
+            'del "%~f0"\r\n'
+        )
+        bat_path.write_text(bat_content, encoding='gbk', errors='replace')
+        print(f"  [Update] Generated updater: {bat_path}")
+
+        # 启动 updater.bat 并退出当前进程
+        subprocess.Popen(
+            ['cmd', '/c', str(bat_path)],
+            cwd=str(exe_dir),
+            creationflags=subprocess.CREATE_NEW_CONSOLE
+        )
+        print("  [Update] Updater launched, shutting down...")
+
+        # 延迟退出，让响应先返回给前端
+        def _exit_later():
+            import time
+            time.sleep(1)
+            os._exit(0)
+
+        threading.Thread(target=_exit_later, daemon=True).start()
+        return jsonify({'ok': True, 'message': '更新已开始，程序将自动重启'})
+
+    except Exception as e:
+        print(f"  [Update] Failed: {traceback.format_exc()}")
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        return jsonify({'error': f'更新失败: {str(e)}'}), 500
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 端口管理
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def _kill_port(port):
@@ -1127,6 +1291,9 @@ if __name__ == '__main__':
         print(f"  Output:  {OUTPUT_DIR}")
         print(f"  FFmpeg:  {FFMPEG_PATH}")
         print("  Close this window to exit.\n")
+
+        # 后台检查更新（不阻塞启动）
+        threading.Thread(target=check_update_background, daemon=True).start()
 
         threading.Timer(1.5, lambda: webbrowser.open(f'http://localhost:{PORT}')).start()
 

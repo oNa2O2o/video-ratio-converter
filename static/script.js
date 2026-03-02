@@ -363,4 +363,47 @@ document.addEventListener('DOMContentLoaded', () => {
             errorItems.appendChild(div);
         }
     }
+
+    checkForUpdate();
 });
+
+function checkForUpdate() {
+    fetch('/api/check-update')
+        .then(r => r.json())
+        .then(data => {
+            if (data.available) {
+                const banner = document.getElementById('update-banner');
+                const text = document.getElementById('update-text');
+                if (banner && text) {
+                    text.textContent = `发现新版本 ${data.latest}（当前 v${data.current}）`;
+                    banner.style.display = 'flex';
+                }
+            } else if (!data.checked) {
+                setTimeout(checkForUpdate, 3000);
+            }
+        })
+        .catch(() => {});
+}
+
+function doUpdate() {
+    const btn = document.getElementById('update-btn');
+    const text = document.getElementById('update-text');
+    if (btn) { btn.disabled = true; btn.textContent = '更新中...'; }
+    if (text) { text.textContent = '正在下载并安装更新，请勿关闭...'; }
+
+    fetch('/api/do-update', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                if (text) text.textContent = '更新完成，程序正在重启，请稍后刷新页面...';
+                if (btn) btn.style.display = 'none';
+            } else {
+                if (text) text.textContent = `更新失败: ${data.error}`;
+                if (btn) { btn.disabled = false; btn.textContent = '重试'; }
+            }
+        })
+        .catch(() => {
+            if (text) text.textContent = '更新完成，程序正在重启...';
+            if (btn) btn.style.display = 'none';
+        });
+}

@@ -24,6 +24,51 @@ body {
     z-index: 1000;
 }
 
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   更新横幅
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.update-banner {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(90deg, #1a5276, #2e86c1);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    font-size: 13px;
+    z-index: 999;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+
+.update-banner button {
+    padding: 4px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.update-banner #update-btn {
+    background: #27ae60;
+    color: #fff;
+}
+
+.update-banner #update-btn:hover { background: #2ecc71; }
+.update-banner #update-btn:disabled { background: #555; cursor: wait; }
+
+.update-banner .update-dismiss {
+    background: transparent;
+    color: rgba(255,255,255,.7);
+    text-decoration: underline;
+}
+
+.update-banner .update-dismiss:hover { color: #fff; }
+
 .nav-brand {
     font-size: 15px;
     font-weight: 700;
