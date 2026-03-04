@@ -102,9 +102,11 @@ except Exception as e:
     _fatal_error(f"Flask 初始化失败:\n{traceback.format_exc()}")
 
 UPLOAD_DIR = BASE_DIR / "uploads"
+RENAME_UPLOAD_DIR = BASE_DIR / "uploads_rename"
 TEMPLATE_DIR = BASE_DIR / "uploads" / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 UPLOAD_DIR.mkdir(exist_ok=True)
+RENAME_UPLOAD_DIR.mkdir(exist_ok=True)
 TEMPLATE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -113,7 +115,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.5.1'
+APP_VERSION = '2.5.2'
 
 
 @app.after_request
@@ -258,22 +260,13 @@ def make_even(n):
 
 
 def calculate_output_dimensions(orig_w, orig_h, target_ratio):
-    """计算输出尺寸，保持原始视频完整大小"""
+    """固定输出尺寸：横 1920x1080，方 1080x1080，竖 1080x1920"""
     if target_ratio == "16:9":
-        h = orig_h
-        w = int(h * 16 / 9)
-        if w < orig_w:
-            w = orig_w
-            h = int(w * 9 / 16)
+        w, h = 1920, 1080
     elif target_ratio == "9:16":
-        w = orig_w
-        h = int(w * 16 / 9)
-        if h < orig_h:
-            h = orig_h
-            w = int(h * 9 / 16)
+        w, h = 1080, 1920
     else:  # 1:1
-        side = max(orig_w, orig_h)
-        w = h = side
+        w = h = 1080
     return make_even(w), make_even(h)
 
 
@@ -995,7 +988,7 @@ def upload_for_rename():
 
         file_id = str(uuid.uuid4())
         safe_name = f"{file_id}{ext}"
-        save_path = UPLOAD_DIR / safe_name
+        save_path = RENAME_UPLOAD_DIR / safe_name
         f.save(str(save_path))
 
         # 获取分辨率
