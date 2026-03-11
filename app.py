@@ -103,19 +103,88 @@ except Exception as e:
 
 UPLOAD_DIR = BASE_DIR / "uploads"
 RENAME_UPLOAD_DIR = BASE_DIR / "uploads_rename"
+UPLOAD_DIR_EDITOR = BASE_DIR / "uploads_editor"
 TEMPLATE_DIR = BASE_DIR / "uploads" / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 UPLOAD_DIR.mkdir(exist_ok=True)
 RENAME_UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR_EDITOR.mkdir(exist_ok=True)
 TEMPLATE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4GB
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 动态配置 — config.json
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONFIG_PATH = BASE_DIR / 'config.json'
+
+DEFAULT_CREATORS = [
+    {'label': '钟海明', 'value': 'ZHM'},
+    {'label': '杨懿', 'value': 'YY'},
+    {'label': '赵晟悦', 'value': 'ZSY'},
+    {'label': '高娇阳', 'value': 'GJY'},
+    {'label': '杨皓然', 'value': 'YHR'},
+    {'label': '盛妍', 'value': 'SY'},
+    {'label': '董慧媛', 'value': 'DHY'},
+    {'label': '常广瑜', 'value': 'CGY'},
+    {'label': '乔翾宇', 'value': 'QXY'},
+    {'label': '崔佳仪', 'value': 'CJY'},
+    {'label': '王仲茨', 'value': 'WZC'},
+    {'label': '任智斌', 'value': 'RZB'},
+    {'label': '刘阳', 'value': 'LY'},
+    {'label': '李文迪', 'value': 'LWD'},
+]
+
+DEFAULT_CONFIG = {
+    'creators': DEFAULT_CREATORS,
+    'defaultRegion': 'JP',
+    'defaultPlatform': 'GG',
+    'defaultCreator': 'ZHM',
+}
+
+
+def load_config():
+    """从 config.json 加载配置，合并默认值"""
+    config = dict(DEFAULT_CONFIG)
+    config['creators'] = [dict(c) for c in DEFAULT_CREATORS]
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+            if 'creators' in saved and isinstance(saved['creators'], list):
+                config['creators'] = saved['creators']
+            if 'defaultRegion' in saved:
+                config['defaultRegion'] = saved['defaultRegion']
+            if 'defaultPlatform' in saved:
+                config['defaultPlatform'] = saved['defaultPlatform']
+            if 'defaultCreator' in saved:
+                config['defaultCreator'] = saved['defaultCreator']
+        except Exception as e:
+            print(f"  [Config] Failed to load config.json: {e}")
+    return config
+
+
+def save_config(config):
+    """保存配置到 config.json"""
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+
+def sync_known_creators():
+    """从 config 同步 KNOWN_CREATORS 集合，用于文件名解析"""
+    global KNOWN_CREATORS
+    cfg = load_config()
+    KNOWN_CREATORS = {c['value'] for c in cfg.get('creators', []) if c.get('value')}
+
+
+# 启动时同步
+sync_known_creators()
+
 
 # ━━━ 版本号（用于缓存失效） ━━━
-APP_VERSION = '2.5.2'
+APP_VERSION = '2.6.0'
 
 
 @app.after_request
@@ -248,10 +317,13 @@ def classify_ratio(width, height):
     return min(diffs, key=diffs.get)
 
 
-def get_target_ratios(current_ratio):
-    """返回其他两种比例"""
-    all_ratios = ["9:16", "1:1", "16:9"]
-    return [r for r in all_ratios if r != current_ratio]
+# 固定输出三种标准尺寸，规避原视频尺寸不符合标准的情况
+STANDARD_RATIOS = ["9:16", "1:1", "16:9"]
+
+
+def get_target_ratios(_current_ratio=None):
+    """始终返回全部三种比例，使每个视频都输出：原比例标准尺寸 + 另外两种标准尺寸，共 3 个视频"""
+    return list(STANDARD_RATIOS)
 
 
 def make_even(n):
@@ -615,7 +687,7 @@ def classify_ratio_rename(w, h):
 # 已知的业务标签集合
 KNOWN_REGIONS = {'JP', 'TC', 'EN', 'TH', 'KR', 'VN', 'ID', 'ES'}
 KNOWN_PLATFORMS = {'FB', 'GG', 'TT'}
-KNOWN_CREATORS = {'ZHM', 'YY', 'ZSY', 'GJY', 'YHR', 'SY', 'DHY', 'CGY', 'QXY', 'CJY', 'WZC', 'RZB'}
+KNOWN_CREATORS = {'ZHM', 'YY', 'ZSY', 'GJY', 'YHR', 'SY', 'DHY', 'CGY', 'QXY', 'CJY', 'WZC', 'RZB', 'LY', 'LWD'}
 KNOWN_PROPERTIES = {'原创', '迭代', '竞品二创'}
 KNOWN_AUDIENCES = {'男性向', '女性向'}
 KNOWN_RATIOS = {'竖', '方', '横'}
@@ -729,6 +801,79 @@ def parse_filename_local(filename):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 视频编辑 - 导出最后一帧
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def extract_last_frame(video_path, output_path):
+    """用 ffmpeg 导出视频最后一帧为 PNG，返回 True 成功"""
+    cmd = [
+        FFMPEG_PATH, '-y',
+        '-sseof', '-0.04', '-i', str(video_path),
+        '-vframes', '1', '-update', '1',
+        str(output_path)
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True,
+            encoding='utf-8', errors='replace',
+            timeout=60, **_subprocess_kwargs
+        )
+        return result.returncode == 0 and Path(output_path).exists()
+    except Exception:
+        return False
+
+
+def _copy_image_to_clipboard_win(image_path):
+    """Windows：将图片文件放入剪贴板（DIB 格式），成功返回 True"""
+    if sys.platform != 'win32' or not HAS_PIL:
+        return False
+    try:
+        with PILImage.open(image_path) as img:
+            img = img.convert('RGB')
+        w, h = img.size
+        # DIB：BITMAPINFOHEADER 40 字节 + BGR 自底向上，每行 4 字节对齐
+        stride = ((w * 3 + 3) // 4) * 4
+        raw_size = 40 + stride * h
+        buf = bytearray(raw_size)
+        # BITMAPINFOHEADER
+        buf[0:4] = (40).to_bytes(4, 'little')   # biSize
+        buf[4:8] = w.to_bytes(4, 'little')      # biWidth
+        buf[8:12] = (-h).to_bytes(4, 'little', signed=True)  # biHeight (负=自顶向下，避免上下颠倒)
+        buf[12:14] = (1).to_bytes(2, 'little')  # biPlanes
+        buf[14:16] = (24).to_bytes(2, 'little') # biBitCount
+        buf[16:20] = (0).to_bytes(4, 'little')  # biCompression = BI_RGB
+        pixels = img.tobytes()
+        # PIL RGB 转 BGR，并按 stride 每行 4 字节对齐
+        off = 40
+        for y in range(h):
+            row = pixels[y * w * 3:(y + 1) * w * 3]
+            for x in range(w):
+                buf[off] = row[x * 3 + 2]
+                buf[off + 1] = row[x * 3 + 1]
+                buf[off + 2] = row[x * 3]
+                off += 3
+            off += stride - w * 3
+        ctypes = __import__('ctypes')
+        ctypes.windll.user32.OpenClipboard(0)
+        ctypes.windll.user32.EmptyClipboard()
+        CF_DIB = 8
+        GMEM_MOVEABLE = 0x0002
+        hmem = ctypes.windll.kernel32.GlobalAlloc(GMEM_MOVEABLE, len(buf))
+        if not hmem:
+            ctypes.windll.user32.CloseClipboard()
+            return False
+        ptr = ctypes.windll.kernel32.GlobalLock(hmem)
+        if ptr:
+            src = (ctypes.c_char * len(buf)).from_buffer_copy(bytes(buf))
+            ctypes.windll.kernel32.RtlMoveMemory(ptr, src, len(buf))
+            ctypes.windll.kernel32.GlobalUnlock(hmem)
+        ctypes.windll.user32.SetClipboardData(CF_DIB, hmem)
+        ctypes.windll.user32.CloseClipboard()
+        return True
+    except Exception:
+        return False
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Flask 路由 - 比例转换工具
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.route('/')
@@ -739,6 +884,16 @@ def index():
 @app.route('/rename')
 def rename_redirect():
     return render_template('index.html', active_tab='rename')
+
+
+@app.route('/editor')
+def editor_redirect():
+    return render_template('index.html', active_tab='editor')
+
+
+@app.route('/settings')
+def settings_redirect():
+    return render_template('index.html', active_tab='settings')
 
 
 @app.route('/upload', methods=['POST'])
@@ -948,21 +1103,115 @@ def browse_folder():
         return jsonify({'error': str(e)}), 500
 
 
+def _open_folder_foreground(folder_path):
+    """在系统文件管理器中打开文件夹，并尽量使窗口置前显示（Windows 下直接显示在桌面最前）"""
+    target = Path(folder_path)
+    if not target.exists():
+        return False
+    path_str = str(target.resolve())
+    if sys.platform == 'win32':
+        # 先打开文件夹
+        subprocess.Popen(['explorer', path_str])
+        # 延迟后查找 Explorer 窗口并置前
+        def _bring_explorer_front():
+            import time
+            time.sleep(0.4)
+            try:
+                ctypes = __import__('ctypes')
+                user32 = ctypes.windll.user32
+                found = []
+
+                def enum_cb(hwnd, _):
+                    if user32.IsWindowVisible(hwnd):
+                        buf = ctypes.create_unicode_buffer(260)
+                        if user32.GetClassNameW(hwnd, buf, 260):
+                            cls = buf.value
+                            if cls in ('CabinetWClass', 'ExploreWClass'):
+                                found.append(hwnd)
+                    return True
+
+                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+                user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+                if found:
+                    user32.SetForegroundWindow(found[-1])
+            except Exception:
+                pass
+        threading.Thread(target=_bring_explorer_front, daemon=True).start()
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', path_str])
+    else:
+        subprocess.Popen(['xdg-open', path_str])
+    return True
+
+
 @app.route('/open-folder', methods=['POST'])
 def open_folder():
-    """在系统文件管理器中打开文件夹"""
-    data = request.get_json()
-    folder_path = data.get('path', str(OUTPUT_DIR))
+    """在系统文件管理器中打开文件夹（直接置前显示）"""
+    data = request.get_json() or {}
+    folder_path = (data.get('path') or '').strip() or str(OUTPUT_DIR)
     target = Path(folder_path)
     if not target.exists():
         return jsonify({'error': '目录不存在'}), 404
-    if sys.platform == 'win32':
-        os.startfile(str(target))
-    elif sys.platform == 'darwin':
-        subprocess.Popen(['open', str(target)])
-    else:
-        subprocess.Popen(['xdg-open', str(target)])
+    _open_folder_foreground(folder_path)
     return jsonify({'ok': True})
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Flask 路由 - 视频编辑
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@app.route('/api/video-editor/extract-last-frame', methods=['POST'])
+def api_extract_last_frame():
+    """上传视频，导出最后一帧到输出目录并复制到剪贴板"""
+    if 'file' not in request.files:
+        return jsonify({'error': '请选择视频文件'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'error': '请选择视频文件'}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in VIDEO_EXTENSIONS:
+        return jsonify({'error': '仅支持视频格式：' + ', '.join(VIDEO_EXTENSIONS)}), 400
+
+    output_dir = (request.form.get('output_dir') or '').strip() or str(OUTPUT_DIR)
+    out_path = Path(output_dir)
+    try:
+        out_path.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return jsonify({'error': '无法创建输出目录'}), 400
+
+    tmp_id = str(uuid.uuid4())
+    tmp_video = UPLOAD_DIR_EDITOR / f"{tmp_id}{ext}"
+    try:
+        f.save(str(tmp_video))
+    except Exception:
+        return jsonify({'error': '保存临时文件失败'}), 500
+
+    stem = Path(f.filename).stem
+    out_name = f"{stem}_last_frame.png"
+    out_file = out_path / out_name
+    counter = 0
+    while out_file.exists():
+        counter += 1
+        out_file = out_path / f"{stem}_last_frame_{counter}.png"
+
+    if not extract_last_frame(tmp_video, out_file):
+        try:
+            tmp_video.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return jsonify({'error': '导出最后一帧失败，请检查视频是否有效'}), 500
+
+    clipboard_ok = _copy_image_to_clipboard_win(out_file) if sys.platform == 'win32' else False
+    try:
+        tmp_video.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    return jsonify({
+        'ok': True,
+        'path': str(out_file),
+        'filename': out_file.name,
+        'clipboard': clipboard_ok
+    })
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1090,8 +1339,12 @@ def _parse_version(v):
     return tuple(int(x) for x in re.sub(r'^v', '', v.strip()).split('.'))
 
 
+# 定期检查间隔（秒），默认 30 分钟
+UPDATE_CHECK_INTERVAL = 30 * 60
+
+
 def check_update_background():
-    """后台线程检查 GitHub 是否有新版本（仅打包模式执行）"""
+    """后台检查 GitHub 是否有新版本（仅打包模式执行）"""
     if not getattr(sys, 'frozen', False):
         return
     try:
@@ -1124,9 +1377,14 @@ def check_update_background():
             'current': APP_VERSION,
             'download_url': download_url,
             'release_notes': data.get('body', '') or '',
-            'html_url': data.get('html_url', '')
+            'html_url': data.get('html_url', ''),
+            'downloaded': False
         })
         print(f"  [Update] New version available: {latest_tag}")
+
+        # 自动后台下载 ZIP
+        if download_url and not update_info.get('downloaded'):
+            _auto_download_update(download_url)
     except HTTPError as e:
         if e.code == 404:
             # 仓库暂无任何 Release 时 GitHub 返回 404，属正常情况
@@ -1139,10 +1397,139 @@ def check_update_background():
         update_info.update({'checked': True, 'available': False})
 
 
+def _auto_download_update(download_url):
+    """后台静默下载更新 ZIP 到 _update_temp/"""
+    try:
+        exe_dir = Path(sys.executable).parent
+        temp_dir = exe_dir / '_update_temp'
+        zip_path = temp_dir / 'update.zip'
+
+        # 如果已经下载过，跳过
+        if zip_path.exists() and zip_path.stat().st_size > 0:
+            update_info['downloaded'] = True
+            print("  [Update] ZIP already downloaded, skipping")
+            return
+
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"  [Update] Auto-downloading: {download_url}")
+        req = Request(download_url, headers={'Accept': 'application/octet-stream'})
+        with urlopen(req, timeout=120) as resp:
+            zip_path.write_bytes(resp.read())
+        update_info['downloaded'] = True
+        print(f"  [Update] Auto-download complete: {zip_path.stat().st_size // 1024}KB")
+    except Exception as e:
+        print(f"  [Update] Auto-download failed (ignored): {e}")
+
+
+def _periodic_update_check_loop():
+    """后台循环：启动时检查一次，之后每隔 UPDATE_CHECK_INTERVAL 秒再检查（仅打包模式）"""
+    if not getattr(sys, 'frozen', False):
+        return
+    import time
+    while True:
+        check_update_background()
+        time.sleep(UPDATE_CHECK_INTERVAL)
+
+
 @app.route('/api/check-update')
 def api_check_update():
-    """前端查询更新状态"""
+    """前端查询更新状态；若带 ?trigger=1 则先执行一次检查再返回"""
+    if request.args.get('trigger') == '1':
+        check_update_background()
     return jsonify(update_info)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 配置 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@app.route('/api/config')
+def api_get_config():
+    return jsonify(load_config())
+
+
+@app.route('/api/config', methods=['POST'])
+def api_save_config():
+    data = request.get_json(force=True)
+    try:
+        cfg = load_config()
+        if 'creators' in data and isinstance(data['creators'], list):
+            cfg['creators'] = data['creators']
+        if 'defaultRegion' in data:
+            cfg['defaultRegion'] = data['defaultRegion']
+        if 'defaultPlatform' in data:
+            cfg['defaultPlatform'] = data['defaultPlatform']
+        if 'defaultCreator' in data:
+            cfg['defaultCreator'] = data['defaultCreator']
+        save_config(cfg)
+        sync_known_creators()
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 状态保存/恢复 API（更新重启时使用）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_STATE_PATH = BASE_DIR / '_update_state.json'
+
+
+@app.route('/api/save-state', methods=['POST'])
+def api_save_state():
+    try:
+        state = request.get_json(force=True)
+        with open(_STATE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(state, f, ensure_ascii=False)
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/restore-state')
+def api_restore_state():
+    if not _STATE_PATH.exists():
+        return jsonify({'state': None})
+    try:
+        with open(_STATE_PATH, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        _STATE_PATH.unlink(missing_ok=True)
+        return jsonify({'state': state})
+    except Exception as e:
+        return jsonify({'state': None, 'error': str(e)})
+
+
+@app.route('/api/release-notes')
+def api_release_notes():
+    """获取最近几个版本的更新日志"""
+    try:
+        url = f'https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10'
+        req = Request(url, headers={'Accept': 'application/vnd.github.v3+json'})
+        with urlopen(req, timeout=10) as resp:
+            releases = json.loads(resp.read().decode('utf-8'))
+
+        notes = []
+        for rel in releases:
+            tag = rel.get('tag_name', '')
+            body = rel.get('body', '') or ''
+            published = rel.get('published_at', '')
+            notes.append({
+                'version': tag,
+                'date': published[:10] if published else '',
+                'body': body
+            })
+        return jsonify({'notes': notes, 'current': APP_VERSION})
+    except Exception as e:
+        # 如果获取失败，至少返回当前更新信息中的 release_notes
+        single = []
+        if update_info.get('release_notes'):
+            single.append({
+                'version': update_info.get('latest', ''),
+                'date': '',
+                'body': update_info.get('release_notes', '')
+            })
+        return jsonify({'notes': single, 'current': APP_VERSION})
 
 
 @app.route('/api/do-update', methods=['POST'])
@@ -1160,18 +1547,23 @@ def api_do_update():
     exe_name = Path(sys.executable).name
 
     try:
-        # 清理旧的临时目录
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-        temp_dir.mkdir(parents=True, exist_ok=True)
-
-        # 下载 ZIP
         zip_path = temp_dir / 'update.zip'
-        print(f"  [Update] Downloading: {download_url}")
-        req = Request(download_url, headers={'Accept': 'application/octet-stream'})
-        with urlopen(req, timeout=120) as resp:
-            zip_path.write_bytes(resp.read())
-        print(f"  [Update] Downloaded: {zip_path.stat().st_size // 1024}KB")
+        already_downloaded = update_info.get('downloaded') and zip_path.exists() and zip_path.stat().st_size > 0
+
+        if already_downloaded:
+            print("  [Update] Using pre-downloaded ZIP")
+        else:
+            # 清理旧的临时目录
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+
+            # 下载 ZIP
+            print(f"  [Update] Downloading: {download_url}")
+            req = Request(download_url, headers={'Accept': 'application/octet-stream'})
+            with urlopen(req, timeout=120) as resp:
+                zip_path.write_bytes(resp.read())
+            print(f"  [Update] Downloaded: {zip_path.stat().st_size // 1024}KB")
 
         # 解压
         extract_dir = temp_dir / 'extracted'
@@ -1200,11 +1592,14 @@ def api_do_update():
         if extract_dir.exists():
             shutil.rmtree(extract_dir)
 
-        # 使用 exe 的短路径（8.3），避免 bat 中中文名在 cmd 下乱码导致找不到文件
+        # 使用 exe 的短路径（8.3）时，bat 中可直接 start；否则用 VBS 启动 exe，bat 保持纯 ASCII 避免乱码
         exe_full = exe_dir / exe_name
         exe_to_start = _get_short_path(exe_full)
         use_short_path = exe_to_start != str(exe_full) and exe_to_start.isascii()
 
+        # 等待主进程完全退出并释放 exe 后再覆盖，避免「覆盖失败/半覆盖导致闪退、重开仍是旧版」
+        wait_sec = 10
+        # 使用 robocopy 支持重试，避免文件仍被占用时一次覆盖失败
         bat_path = exe_dir / '_updater.bat'
         if use_short_path:
             bat_content = (
@@ -1212,52 +1607,76 @@ def api_do_update():
                 'chcp 65001 >nul 2>&1\r\n'
                 'cd /d "%~dp0"\r\n'
                 'echo.\r\n'
-                'echo  Updating...\r\n'
-                'echo.\r\n'
-                'timeout /t 3 /nobreak >nul\r\n'
-                'xcopy /s /e /y "_update_temp\\*" "." >nul 2>&1\r\n'
-                'rmdir /s /q "_update_temp" >nul 2>&1\r\n'
+                'echo  Waiting for app to exit...\r\n'
+                f'timeout /t {wait_sec} /nobreak >nul\r\n'
+                'echo  Copying files...\r\n'
+                'robocopy "_update_temp" "." /E /IS /IT /R:5 /W:3 /NFL /NDL /NJH /NJS >nul\r\n'
+                'if errorlevel 8 (echo  Copy failed. Retry later. & pause) else (\r\n'
+                'rmdir /s /q "_update_temp" 2>nul\r\n'
                 'echo  Done. Restarting...\r\n'
                 f'start "" "{exe_to_start}"\r\n'
                 'timeout /t 1 /nobreak >nul\r\n'
+                ')\r\n'
                 'del "%~f0"\r\n'
             )
             bat_path.write_text(bat_content, encoding='ascii')
         else:
+            # 无 exe 短路径：用 VBS 启动 exe（VBS 支持 Unicode），bat 仅含 ASCII，彻底避免 cmd 乱码
+            def _vbs_escape(s):
+                return s.replace('"', '""')
+            exe_path_str = _vbs_escape(str(exe_full.resolve()))
+            exe_dir_str = _vbs_escape(str(exe_dir.resolve()))
+            vbs_path = exe_dir / '_restart.vbs'
+            vbs_content = (
+                'Option Explicit\r\n'
+                'Dim WshShell, exePath, exeDir\r\n'
+                f'exePath = "{exe_path_str}"\r\n'
+                f'exeDir = "{exe_dir_str}"\r\n'
+                'Set WshShell = CreateObject("WScript.Shell")\r\n'
+                'WshShell.CurrentDirectory = exeDir\r\n'
+                'WshShell.Run Chr(34) & exePath & Chr(34), 1, False\r\n'
+            )
+            vbs_path.write_text(vbs_content, encoding='utf-16-le', errors='replace')
             bat_content = (
                 '@echo off\r\n'
                 'chcp 65001 >nul 2>&1\r\n'
                 'cd /d "%~dp0"\r\n'
                 'echo.\r\n'
-                'echo  正在更新...\r\n'
-                'echo.\r\n'
-                'timeout /t 3 /nobreak >nul\r\n'
-                'xcopy /s /e /y "_update_temp\\*" "." >nul 2>&1\r\n'
-                'rmdir /s /q "_update_temp" >nul 2>&1\r\n'
-                'echo  更新完成，正在重启...\r\n'
-                f'start "" "{exe_name}"\r\n'
+                'echo  Waiting for app to exit...\r\n'
+                f'timeout /t {wait_sec} /nobreak >nul\r\n'
+                'echo  Copying files...\r\n'
+                'robocopy "_update_temp" "." /E /IS /IT /R:5 /W:3 /NFL /NDL /NJH /NJS >nul\r\n'
+                'if errorlevel 8 (echo  Copy failed. Retry later. & pause) else (\r\n'
+                'rmdir /s /q "_update_temp" 2>nul\r\n'
+                'echo  Restarting...\r\n'
+                'wscript "%~dp0_restart.vbs"\r\n'
                 'timeout /t 1 /nobreak >nul\r\n'
+                'del "%~dp0_restart.vbs" 2>nul\r\n'
+                ')\r\n'
                 'del "%~f0"\r\n'
             )
-            bat_path.write_text(bat_content, encoding='gbk', errors='replace')
+            bat_path.write_text(bat_content, encoding='ascii')
 
         print(f"  [Update] Generated updater (short_path={use_short_path}), exe={exe_to_start!r}")
 
-        # 启动 updater.bat（优先用短路径调用 bat，避免中文路径在 cmd 中乱码）
-        bat_to_run = _get_short_path(bat_path)
-        if bat_to_run == str(bat_path):
-            bat_to_run = str(bat_path)
+        # 用「目录短路径 + 纯英文 bat 名」调用，避免向 cmd 传入中文路径导致乱码
+        exe_dir_short = _get_short_path(exe_dir)
+        if exe_dir_short.isascii():
+            cmd_line = f'cd /d "{exe_dir_short}" && _updater.bat'
+        else:
+            bat_short = _get_short_path(bat_path)
+            cmd_line = bat_short if bat_short.isascii() else f'cd /d "{exe_dir}" && _updater.bat'
         subprocess.Popen(
-            ['cmd', '/c', bat_to_run],
+            ['cmd', '/c', cmd_line],
             cwd=str(exe_dir),
             creationflags=subprocess.CREATE_NEW_CONSOLE
         )
         print("  [Update] Updater launched, shutting down...")
 
-        # 延迟退出，让响应先返回给前端
+        # 延迟退出，确保 bat 已启动且响应已返回前端，再结束进程释放 exe
         def _exit_later():
             import time
-            time.sleep(1)
+            time.sleep(2)
             os._exit(0)
 
         threading.Thread(target=_exit_later, daemon=True).start()
@@ -1335,8 +1754,8 @@ if __name__ == '__main__':
         print(f"  FFmpeg:  {FFMPEG_PATH}")
         print("  Close this window to exit.\n")
 
-        # 后台检查更新（不阻塞启动）
-        threading.Thread(target=check_update_background, daemon=True).start()
+        # 后台定期检查更新（启动时一次，之后每 30 分钟，仅打包模式）
+        threading.Thread(target=_periodic_update_check_loop, daemon=True).start()
 
         threading.Timer(1.5, lambda: webbrowser.open(f'http://localhost:{PORT}')).start()
 

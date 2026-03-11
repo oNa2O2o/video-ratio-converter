@@ -4,20 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>素材工具箱</title>
-    <link rel="stylesheet" href="/static/style.css?v=2.5.2">
-    <link rel="stylesheet" href="/static/rename.css?v=2.5.2">
+    <link rel="stylesheet" href="/static/style.css?v=2.6.0">
+    <link rel="stylesheet" href="/static/rename.css?v=2.6.0">
 </head>
 <body>
     <nav class="main-nav">
         <div class="nav-brand">素材工具箱</div>
         <a class="nav-link" data-tab="converter" onclick="switchTab('converter')">视频比例转换</a>
         <a class="nav-link" data-tab="rename" onclick="switchTab('rename')">素材重命名</a>
+        <a class="nav-link" data-tab="editor" onclick="switchTab('editor')">视频编辑</a>
+        <a class="nav-link" data-tab="settings" onclick="switchTab('settings')">设置</a>
+        <button type="button" id="check-update-btn" class="nav-check-update" onclick="manualCheckUpdate()">检查更新</button>
     </nav>
 
     <div id="update-banner" class="update-banner" style="display:none">
         <span id="update-text"></span>
         <button id="update-btn" onclick="doUpdate()">立即更新</button>
+        <button id="changelog-toggle-btn" class="update-changelog-btn" onclick="toggleChangelog()" style="display:none">更新日志</button>
         <button class="update-dismiss" onclick="this.parentElement.style.display='none'">忽略</button>
+    </div>
+    <div id="changelog-panel" class="changelog-panel" style="display:none">
+        <div class="changelog-content" id="changelog-content">
+            <p style="color:#888">加载中...</p>
+        </div>
     </div>
 
     <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -28,7 +37,7 @@
             <div class="main-column">
                 <header>
                     <h1>视频比例转换</h1>
-                    <p class="subtitle">上传视频，自动生成其他比例版本</p>
+                    <p class="subtitle">上传视频，按标准尺寸输出横 / 方 / 竖三种比例（原比例 + 另外两种）</p>
                 </header>
 
                 <div id="drop-zone" class="drop-zone">
@@ -50,6 +59,7 @@
                         <input type="text" id="output-path" class="output-path-input"
                                placeholder="留空则使用默认目录（项目目录/output）">
                         <button id="browse-output-btn" class="btn btn-secondary">浏览</button>
+                        <button type="button" id="open-output-folder-btn" class="btn btn-secondary" title="直接打开输出文件夹并显示在最前">打开输出文件夹</button>
                     </div>
                 </div>
 
@@ -150,6 +160,53 @@
     <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
          Tab 2: 素材重命名
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- ━━━ 视频编辑 ━━━ -->
+    <div id="tab-editor" class="tab-content" style="display:none">
+        <div class="page-layout">
+            <div class="main-column">
+                <header>
+                    <h1>视频编辑</h1>
+                    <p class="subtitle">导出最后一帧到输出目录，并复制到剪贴板</p>
+                </header>
+
+                <div class="output-config">
+                    <div class="section-header"><h2>输出目录</h2></div>
+                    <div class="output-path-row">
+                        <input type="text" id="editor-output-path" class="output-path-input"
+                               placeholder="留空则使用默认目录（项目目录/output）">
+                        <button id="editor-browse-output-btn" class="btn btn-secondary">浏览</button>
+                        <button type="button" id="editor-open-output-folder-btn" class="btn btn-secondary">打开输出文件夹</button>
+                    </div>
+                </div>
+
+                <div id="editor-drop-zone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p>拖拽视频到此处，或 <span class="browse-link">点击选择</span></p>
+                        <p class="hint">将导出最后一帧为 PNG，并复制到剪贴板</p>
+                    </div>
+                    <input type="file" id="editor-file-input" accept="video/*" hidden>
+                </div>
+
+                <div id="editor-file-info" class="file-list" style="display:none">
+                    <div class="section-header"><h2>当前视频</h2></div>
+                    <p id="editor-filename" class="editor-filename"></p>
+                    <button type="button" id="editor-extract-btn" class="btn btn-primary">导出最后一帧并复制到剪贴板</button>
+                </div>
+
+                <div id="editor-result" class="results-section" style="display:none">
+                    <h2>导出结果</h2>
+                    <p id="editor-result-text" class="editor-result-text"></p>
+                    <button type="button" id="editor-open-folder-btn" class="btn btn-primary">打开输出文件夹</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="tab-rename" class="tab-content" style="display:none">
         <div class="rename-layout">
             <aside class="sidebar">
@@ -225,6 +282,53 @@
         </div>
     </div>
 
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+         Tab 4: 设置
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div id="tab-settings" class="tab-content" style="display:none">
+        <div class="page-layout">
+            <div class="main-column" style="max-width:700px; margin:0 auto;">
+                <header>
+                    <h1>设置</h1>
+                    <p class="subtitle">管理设计师列表和默认参数</p>
+                </header>
+
+                <div class="settings-section">
+                    <h2>设计师管理</h2>
+                    <p class="sidebar-hint">增删设计师后点击"保存设置"生效</p>
+                    <div id="settings-creator-list" class="settings-creator-list"></div>
+                    <div class="settings-add-row">
+                        <input type="text" id="settings-new-name" class="output-path-input" placeholder="姓名" style="flex:1">
+                        <input type="text" id="settings-new-code" class="output-path-input" placeholder="缩写（如 ZHM）" style="flex:1">
+                        <button id="settings-add-btn" class="btn btn-secondary">添加</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h2>默认参数</h2>
+                    <p class="sidebar-hint">重命名工具的默认选中值</p>
+                    <div class="settings-defaults">
+                        <div class="config-group">
+                            <label for="settings-default-region">默认地区</label>
+                            <select id="settings-default-region"></select>
+                        </div>
+                        <div class="config-group">
+                            <label for="settings-default-platform">默认平台</label>
+                            <select id="settings-default-platform"></select>
+                        </div>
+                        <div class="config-group">
+                            <label for="settings-default-creator">默认制作人</label>
+                            <select id="settings-default-creator"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="settings-save-btn" class="btn btn-primary">保存设置</button>
+                <p id="settings-status" class="settings-status"></p>
+            </div>
+        </div>
+    </div>
+
     <script>
     // Tab 切换逻辑（全局函数，在其他脚本之前加载）
     function switchTab(tab) {
@@ -232,13 +336,16 @@
         document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
         document.getElementById('tab-' + tab).style.display = 'block';
         document.querySelector(`.nav-link[data-tab="${tab}"]`).classList.add('active');
-        history.replaceState(null, '', tab === 'rename' ? '/rename' : '/');
+        var url = tab === 'rename' ? '/rename' : (tab === 'editor' ? '/editor' : (tab === 'settings' ? '/settings' : '/'));
+        history.replaceState(null, '', url);
     }
     // 初始激活的 tab（由服务端传入）
     switchTab('{{ active_tab }}');
     </script>
 
-    <script src="/static/script.js?v=2.5.2"></script>
-    <script src="/static/rename.js?v=2.5.2"></script>
+    <script src="/static/script.js?v=2.6.0"></script>
+    <script src="/static/rename.js?v=2.6.0"></script>
+    <script src="/static/editor.js?v=2.6.0"></script>
+    <script src="/static/settings.js?v=2.6.0"></script>
 </body>
 </html>

@@ -9,8 +9,8 @@ from pathlib import Path
 from urllib.request import urlopen, Request
 
 REPO = 'oNa2O2o/video-ratio-converter'
-TAG = 'v2.5.2'
-ZIP_NAME = 'AssetToolbox-v2.5.2.zip'  # 英文名避免上传编码问题
+TAG = 'v2.5.5'
+ZIP_NAME = 'AssetToolbox-v2.5.5.zip'  # 英文名避免上传编码问题
 
 def get_token():
     token = os.environ.get('GITHUB_TOKEN', '')

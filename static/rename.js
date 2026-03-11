@@ -23,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const AUDIENCES = ['男性向', '女性向'];
     const RATIOS = ['竖', '方', '横'];
 
-    const CREATORS = [
+    // 默认设计师列表（会被 /api/config 覆盖）
+    let CREATORS = [
         { label: '钟海明', value: 'ZHM' },
         { label: '杨懿', value: 'YY' },
         { label: '赵晟悦', value: 'ZSY' },
@@ -35,8 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
         { label: '乔翾宇', value: 'QXY' },
         { label: '崔佳仪', value: 'CJY' },
         { label: '王仲茨', value: 'WZC' },
-        { label: '任智斌', value: 'RZB' }
+        { label: '任智斌', value: 'RZB' },
+        { label: '刘阳', value: 'LY' },
+        { label: '李文迪', value: 'LWD' }
     ];
+
+    // 动态配置默认值（从 /api/config 加载）
+    let configDefaults = { defaultRegion: 'JP', defaultPlatform: 'GG', defaultCreator: 'ZHM' };
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // DOM 元素
@@ -52,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultItems = document.getElementById('rename-result-items');
     const errorItems = document.getElementById('rename-error-items');
     const openFolderBtn = document.getElementById('rename-open-folder-btn');
+    const openOutputFolderBtn = document.getElementById('rename-open-output-folder-btn');
     const outputPathInput = document.getElementById('rename-output-path');
     const browseOutputBtn = document.getElementById('rename-browse-output-btn');
 
@@ -76,17 +83,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const dd = String(now.getDate()).padStart(2, '0');
         cfgDate.value = `${yy}${mm}${dd}`;
 
+        // 先从后台加载配置，再初始化下拉框
+        fetch('/api/config')
+            .then(r => r.json())
+            .then(cfg => {
+                if (cfg.creators && cfg.creators.length) CREATORS = cfg.creators;
+                if (cfg.defaultRegion) configDefaults.defaultRegion = cfg.defaultRegion;
+                if (cfg.defaultPlatform) configDefaults.defaultPlatform = cfg.defaultPlatform;
+                if (cfg.defaultCreator) configDefaults.defaultCreator = cfg.defaultCreator;
+            })
+            .catch(() => {})
+            .finally(() => {
+                populateSelects();
+            });
+    }
+
+    function populateSelects() {
         populateSelect(cfgRegion, REGIONS.map(r => ({
             value: r.value, label: `${r.label} (${r.value})`
-        })), 'JP');
+        })), configDefaults.defaultRegion);
 
         populateSelect(cfgPlatform, PLATFORMS.map(p => ({
             value: p, label: p
-        })), 'GG');
+        })), configDefaults.defaultPlatform);
 
         populateSelect(cfgCreator, CREATORS.map(c => ({
             value: c.value, label: `${c.label} (${c.value})`
-        })), 'ZHM');
+        })), configDefaults.defaultCreator);
     }
 
     function populateSelect(select, options, defaultValue) {
@@ -361,14 +384,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    openFolderBtn.addEventListener('click', async () => {
-        try {
-            await fetch('/open-folder', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: lastOutputDir })
-            });
-        } catch (err) { alert('无法打开文件夹: ' + err.message); }
+    function openOutputFolder() {
+        const path = (outputPathInput && outputPathInput.value.trim()) || lastOutputDir;
+        return fetch('/open-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: path || '' })
+        }).then(r => r.json()).then(data => { if (data.error) throw new Error(data.error); });
+    }
+    if (openFolderBtn) openFolderBtn.addEventListener('click', async () => {
+        try { await openOutputFolder(); } catch (err) { alert('无法打开文件夹: ' + err.message); }
+    });
+    if (openOutputFolderBtn) openOutputFolderBtn.addEventListener('click', async () => {
+        try { await openOutputFolder(); } catch (err) { alert('无法打开文件夹: ' + err.message); }
     });
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -385,6 +413,52 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!str) return '';
         return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 状态保存与恢复（供更新重启使用）
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    window.renameGetState = function() {
+        return {
+            files: files.map(f => ({
+                id: f.id,
+                originalName: f.originalName,
+                serverPath: f.serverPath,
+                width: f.width,
+                height: f.height,
+                ext: f.ext,
+                date: f.date,
+                region: f.region,
+                property: f.property,
+                audience: f.audience,
+                assetName: f.assetName,
+                platform: f.platform,
+                creator: f.creator,
+                ratio: f.ratio,
+                version: f.version,
+                detectedPlatform: f.detectedPlatform,
+                status: f.status
+            })),
+            cfgDate: cfgDate.value,
+            cfgRegion: cfgRegion.value,
+            cfgPlatform: cfgPlatform.value,
+            cfgCreator: cfgCreator.value,
+            outputDir: outputPathInput ? outputPathInput.value : ''
+        };
+    };
+
+    window.renameRestoreState = function(s) {
+        if (!s) return;
+        if (s.cfgDate) cfgDate.value = s.cfgDate;
+        if (s.cfgRegion) cfgRegion.value = s.cfgRegion;
+        if (s.cfgPlatform) cfgPlatform.value = s.cfgPlatform;
+        if (s.cfgCreator) cfgCreator.value = s.cfgCreator;
+        if (s.outputDir && outputPathInput) outputPathInput.value = s.outputDir;
+        if (s.files && s.files.length) {
+            files = s.files;
+            fileListSection.style.display = 'block';
+            renderFiles();
+        }
+    };
 
     init();
 });

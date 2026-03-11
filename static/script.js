@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const outputPathInput = document.getElementById('output-path');
     const browseOutputBtn = document.getElementById('browse-output-btn');
     const openFolderBtn = document.getElementById('open-folder-btn');
+    const openOutputFolderBtn = document.getElementById('open-output-folder-btn');
 
     let uploadedFiles = [];
     let lastOutputDir = '';
@@ -189,16 +190,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    openFolderBtn.addEventListener('click', async () => {
-        try {
-            await fetch('/open-folder', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: lastOutputDir })
-            });
-        } catch (err) {
-            alert('无法打开文件夹: ' + err.message);
-        }
+    function openOutputFolder() {
+        const path = (outputPathInput && outputPathInput.value.trim()) || lastOutputDir;
+        return fetch('/open-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: path || '' })
+        }).then(r => r.json()).then(data => {
+            if (data.error) throw new Error(data.error);
+        });
+    }
+    if (openFolderBtn) openFolderBtn.addEventListener('click', async () => {
+        try { await openOutputFolder(); } catch (err) { alert('无法打开文件夹: ' + err.message); }
+    });
+    if (openOutputFolderBtn) openOutputFolderBtn.addEventListener('click', async () => {
+        try { await openOutputFolder(); } catch (err) { alert('无法打开文件夹: ' + err.message); }
     });
 
     function resetUI() {
@@ -365,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     checkForUpdate();
+    restoreAppState();
 });
 
 function checkForUpdate() {
@@ -374,9 +381,11 @@ function checkForUpdate() {
             if (data.available) {
                 const banner = document.getElementById('update-banner');
                 const text = document.getElementById('update-text');
+                const clBtn = document.getElementById('changelog-toggle-btn');
                 if (banner && text) {
                     text.textContent = `发现新版本 ${data.latest}（当前 v${data.current}）`;
                     banner.style.display = 'flex';
+                    if (clBtn) clBtn.style.display = '';
                 }
             } else if (!data.checked) {
                 setTimeout(checkForUpdate, 3000);
@@ -385,25 +394,172 @@ function checkForUpdate() {
         .catch(() => {});
 }
 
+function manualCheckUpdate() {
+    var btn = document.getElementById('check-update-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '检查中...'; }
+    fetch('/api/check-update?trigger=1')
+        .then(r => r.json())
+        .then(function(data) {
+            var banner = document.getElementById('update-banner');
+            var text = document.getElementById('update-text');
+            var updateBtn = document.getElementById('update-btn');
+            if (data.available && banner && text) {
+                text.textContent = '发现新版本 ' + data.latest + '（当前 v' + data.current + '）';
+                if (updateBtn) updateBtn.style.display = '';
+                var clBtn = document.getElementById('changelog-toggle-btn');
+                if (clBtn) clBtn.style.display = '';
+                banner.style.display = 'flex';
+            } else if (banner && text) {
+                text.textContent = '当前已是最新版本 v' + (data.current || '');
+                if (updateBtn) updateBtn.style.display = 'none';
+                banner.style.display = 'flex';
+                setTimeout(function() {
+                    banner.style.display = 'none';
+                    if (updateBtn) updateBtn.style.display = '';
+                }, 2500);
+            }
+        })
+        .catch(function() {
+            var banner = document.getElementById('update-banner');
+            var text = document.getElementById('update-text');
+            if (banner && text) { text.textContent = '检查更新失败，请稍后重试'; banner.style.display = 'flex'; }
+        })
+        .finally(function() {
+            if (btn) { btn.disabled = false; btn.textContent = '检查更新'; }
+        });
+}
+
 function doUpdate() {
     const btn = document.getElementById('update-btn');
     const text = document.getElementById('update-text');
     if (btn) { btn.disabled = true; btn.textContent = '更新中...'; }
     if (text) { text.textContent = '正在下载并安装更新，请勿关闭...'; }
 
-    fetch('/api/do-update', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.ok) {
-                if (text) text.textContent = '更新完成，程序正在重启，请稍后刷新页面...';
+    // 先保存状态再更新
+    saveAppState().finally(() => {
+        fetch('/api/do-update', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    if (text) text.textContent = '更新完成，程序正在重启，请稍后刷新页面...';
+                    if (btn) btn.style.display = 'none';
+                } else {
+                    if (text) text.textContent = `更新失败: ${data.error}`;
+                    if (btn) { btn.disabled = false; btn.textContent = '重试'; }
+                }
+            })
+            .catch(() => {
+                if (text) text.textContent = '更新完成，程序正在重启...';
                 if (btn) btn.style.display = 'none';
-            } else {
-                if (text) text.textContent = `更新失败: ${data.error}`;
-                if (btn) { btn.disabled = false; btn.textContent = '重试'; }
+            });
+    });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 更新日志
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var _changelogLoaded = false;
+
+function toggleChangelog() {
+    var panel = document.getElementById('changelog-panel');
+    if (!panel) return;
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        if (!_changelogLoaded) loadChangelog();
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function loadChangelog() {
+    var content = document.getElementById('changelog-content');
+    fetch('/api/release-notes')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _changelogLoaded = true;
+            if (!data.notes || !data.notes.length) {
+                content.innerHTML = '<p style="color:#888">暂无更新日志</p>';
+                return;
+            }
+            var html = '';
+            data.notes.forEach(function(n) {
+                var dateStr = n.date ? ' (' + n.date + ')' : '';
+                var isCurrent = n.version && data.current && n.version.replace(/^v/, '') === data.current;
+                var badge = isCurrent ? ' <span class="changelog-current">当前版本</span>' : '';
+                html += '<div class="changelog-item">';
+                html += '<h4>' + escapeHtmlGlobal(n.version) + dateStr + badge + '</h4>';
+                html += '<pre class="changelog-body">' + escapeHtmlGlobal(n.body || '无说明') + '</pre>';
+                html += '</div>';
+            });
+            content.innerHTML = html;
+        })
+        .catch(function() {
+            content.innerHTML = '<p style="color:#f87171">加载失败</p>';
+        });
+}
+
+function escapeHtmlGlobal(str) {
+    if (!str) return '';
+    var d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 保存和恢复应用状态（更新时使用）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function saveAppState() {
+    // 获取当前活跃 tab
+    var activeTab = 'converter';
+    var activeLink = document.querySelector('.nav-link.active');
+    if (activeLink) activeTab = activeLink.dataset.tab || 'converter';
+
+    var state = { activeTab: activeTab };
+
+    // 收集重命名工具的状态
+    if (typeof window.renameGetState === 'function') {
+        state.rename = window.renameGetState();
+    }
+
+    // 收集各输出目录
+    var convOutput = document.getElementById('output-path');
+    if (convOutput) state.converterOutputDir = convOutput.value;
+    var editorOutput = document.getElementById('editor-output-path');
+    if (editorOutput) state.editorOutputDir = editorOutput.value;
+
+    return fetch('/api/save-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+    }).then(function(r) { return r.json(); }).catch(function() { return {}; });
+}
+
+function restoreAppState() {
+    fetch('/api/restore-state')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data || !data.state) return;
+            var s = data.state;
+
+            // 恢复 tab
+            if (s.activeTab && typeof switchTab === 'function') {
+                switchTab(s.activeTab);
+            }
+
+            // 恢复输出目录
+            if (s.converterOutputDir) {
+                var convOutput = document.getElementById('output-path');
+                if (convOutput) convOutput.value = s.converterOutputDir;
+            }
+            if (s.editorOutputDir) {
+                var editorOutput = document.getElementById('editor-output-path');
+                if (editorOutput) editorOutput.value = s.editorOutputDir;
+            }
+
+            // 恢复重命名工具状态
+            if (s.rename && typeof window.renameRestoreState === 'function') {
+                window.renameRestoreState(s.rename);
             }
         })
-        .catch(() => {
-            if (text) text.textContent = '更新完成，程序正在重启...';
-            if (btn) btn.style.display = 'none';
-        });
+        .catch(function() {});
 }

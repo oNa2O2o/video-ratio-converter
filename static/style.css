@@ -61,6 +61,12 @@ body {
 .update-banner #update-btn:hover { background: #2ecc71; }
 .update-banner #update-btn:disabled { background: #555; cursor: wait; }
 
+.update-banner .update-changelog-btn {
+    background: rgba(255,255,255,.15);
+    color: #fff;
+}
+.update-banner .update-changelog-btn:hover { background: rgba(255,255,255,.25); }
+
 .update-banner .update-dismiss {
     background: transparent;
     color: rgba(255,255,255,.7);
@@ -68,6 +74,62 @@ body {
 }
 
 .update-banner .update-dismiss:hover { color: #fff; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   更新日志面板
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.changelog-panel {
+    position: fixed;
+    top: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 560px;
+    max-height: 400px;
+    background: #131a30;
+    border: 1px solid #1e2a4a;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    z-index: 998;
+    overflow: hidden;
+}
+.changelog-content {
+    padding: 16px 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.changelog-item {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #1e2a4a;
+}
+.changelog-item:last-child { border-bottom: none; margin-bottom: 0; }
+.changelog-item h4 {
+    font-size: 14px;
+    color: #4a9eff;
+    margin-bottom: 6px;
+}
+.changelog-current {
+    display: inline-block;
+    background: #27ae60;
+    color: #fff;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    font-weight: 500;
+}
+.changelog-body {
+    font-size: 13px;
+    color: #bbb;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font-family: inherit;
+}
 
 .nav-brand {
     font-size: 15px;
@@ -97,6 +159,20 @@ body {
     background: #1e3a5f;
     font-weight: 500;
 }
+
+.nav-check-update {
+    margin-left: auto;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #8ab4f8;
+    background: #1e2a4a;
+    border: 1px solid #2e3d5c;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.nav-check-update:hover { background: #2a3655; color: #b0d0ff; }
+.nav-check-update:disabled { opacity: 0.7; cursor: wait; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    左右两栏布局
@@ -420,6 +496,90 @@ header h1 { font-size: 26px; color: #fff; margin-bottom: 6px; }
 }
 .template-remove-btn:hover {
     background: #3a1a1a;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   设置页面
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.settings-section {
+    background: #16213e;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.settings-section h2 {
+    font-size: 17px;
+    margin-bottom: 4px;
+}
+.settings-creator-list {
+    margin: 12px 0;
+}
+.settings-creator-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #131a30;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.settings-creator-name {
+    flex: 1;
+    font-size: 14px;
+}
+.settings-creator-code {
+    color: #4a9eff;
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 50px;
+}
+.settings-creator-del {
+    background: none;
+    border: none;
+    color: #f87171;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+.settings-creator-del:hover { color: #ef4444; }
+.settings-add-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+.settings-defaults {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+.settings-defaults .config-group {
+    flex: 1;
+    min-width: 140px;
+}
+.settings-defaults label {
+    display: block;
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 4px;
+}
+.settings-defaults select {
+    width: 100%;
+    background: #131a30;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #e0e0e0;
+    font-size: 14px;
+    outline: none;
+}
+.settings-defaults select:focus { border-color: #4a9eff; }
+.settings-status {
+    text-align: center;
+    margin-top: 10px;
+    font-size: 13px;
+    min-height: 20px;
 }
 
 /* 响应式：小屏竖排 */

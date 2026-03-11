@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>素材重命名工具</title>
-    <link rel="stylesheet" href="/static/style.css?v=2.5.2">
-    <link rel="stylesheet" href="/static/rename.css?v=2.5.2">
+    <link rel="stylesheet" href="/static/style.css?v=2.5.5">
+    <link rel="stylesheet" href="/static/rename.css?v=2.5.5">
 </head>
 <body>
     <nav class="main-nav">
         <div class="nav-brand">素材工具箱</div>
         <a href="/" class="nav-link">视频比例转换</a>
         <a href="/rename" class="nav-link active">素材重命名</a>
+        <button type="button" id="check-update-btn" class="nav-check-update" onclick="manualCheckUpdate()">检查更新</button>
     </nav>
 
     <div id="update-banner" class="update-banner" style="display:none">
@@ -77,6 +78,7 @@
                     <input type="text" id="rename-output-path" class="output-path-input"
                            placeholder="留空使用默认目录 (项目/output)">
                     <button id="rename-browse-output-btn" class="btn btn-secondary">浏览</button>
+                    <button type="button" id="rename-open-output-folder-btn" class="btn btn-secondary" title="直接打开输出文件夹并显示在最前">打开输出文件夹</button>
                 </div>
             </div>
 
@@ -104,7 +106,7 @@
         </main>
     </div>
 
-    <script src="/static/rename.js?v=2.5.2"></script>
+    <script src="/static/rename.js?v=2.5.5"></script>
     <script>
     function checkForUpdate() {
         fetch('/api/check-update')
@@ -142,6 +144,38 @@
             .catch(() => {
                 if (text) text.textContent = '更新完成，程序正在重启...';
                 if (btn) btn.style.display = 'none';
+            });
+    }
+    function manualCheckUpdate() {
+        var btn = document.getElementById('check-update-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '检查中...'; }
+        fetch('/api/check-update?trigger=1')
+            .then(r => r.json())
+            .then(function(data) {
+                var banner = document.getElementById('update-banner');
+                var text = document.getElementById('update-text');
+                var updateBtn = document.getElementById('update-btn');
+                if (data.available && banner && text) {
+                    text.textContent = '发现新版本 ' + data.latest + '（当前 v' + data.current + '）';
+                    if (updateBtn) updateBtn.style.display = '';
+                    banner.style.display = 'flex';
+                } else if (banner && text) {
+                    text.textContent = '当前已是最新版本 v' + (data.current || '');
+                    if (updateBtn) updateBtn.style.display = 'none';
+                    banner.style.display = 'flex';
+                    setTimeout(function() {
+                        banner.style.display = 'none';
+                        if (updateBtn) updateBtn.style.display = '';
+                    }, 2500);
+                }
+            })
+            .catch(function() {
+                var banner = document.getElementById('update-banner');
+                var text = document.getElementById('update-text');
+                if (banner && text) { text.textContent = '检查更新失败，请稍后重试'; banner.style.display = 'flex'; }
+            })
+            .finally(function() {
+                if (btn) { btn.disabled = false; btn.textContent = '检查更新'; }
             });
     }
     checkForUpdate();
