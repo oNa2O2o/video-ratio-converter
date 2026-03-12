@@ -1,0 +1,55 @@
+{
+  "creators": [
+    {
+      "label": "钟海明",
+      "value": "ZHM"
+    },
+    {
+      "label": "杨懿",
+      "value": "YY"
+    },
+    {
+      "label": "赵晟悦",
+      "value": "ZSY"
+    },
+    {
+      "label": "盛妍",
+      "value": "SY"
+    },
+    {
+      "label": "董慧媛",
+      "value": "DHY"
+    },
+    {
+      "label": "常广瑜",
+      "value": "CGY"
+    },
+    {
+      "label": "乔翾宇",
+      "value": "QXY"
+    },
+    {
+      "label": "崔佳仪",
+      "value": "CJY"
+    },
+    {
+      "label": "王仲茨",
+      "value": "WZC"
+    },
+    {
+      "label": "任智斌",
+      "value": "RZB"
+    },
+    {
+      "label": "刘阳",
+      "value": "LY"
+    },
+    {
+      "label": "李文迪",
+      "value": "LWD"
+    }
+  ],
+  "defaultRegion": "JP",
+  "defaultPlatform": "GG",
+  "defaultCreator": "ZHM"
+}
